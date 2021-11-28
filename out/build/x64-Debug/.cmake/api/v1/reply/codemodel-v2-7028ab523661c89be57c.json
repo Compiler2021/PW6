@@ -1,0 +1,209 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2,
+						3,
+						4,
+						5
+					],
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						7
+					]
+				},
+				{
+					"build" : "src/AST",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src/AST",
+					"targetIndexes" : 
+					[
+						0,
+						1
+					]
+				},
+				{
+					"build" : "src/ErrorReporter",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src/ErrorReporter",
+					"targetIndexes" : 
+					[
+						3
+					]
+				},
+				{
+					"build" : "src/Frontend",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src/Frontend",
+					"targetIndexes" : 
+					[
+						2,
+						5,
+						6
+					]
+				},
+				{
+					"build" : "src/SysYFIR",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src/SysYFIR",
+					"targetIndexes" : 
+					[
+						4
+					]
+				},
+				{
+					"build" : "src/SysYFIRBuilder",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src/SysYFIRBuilder",
+					"targetIndexes" : 
+					[
+						8
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5
+					],
+					"name" : "SysYFCompiler",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "ASTLib::@a444a0c40c7ac42d3904",
+					"jsonFile" : "target-ASTLib-Debug-b88cf028bbfb96d011ba.json",
+					"name" : "ASTLib",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ASTPrinter::@a444a0c40c7ac42d3904",
+					"jsonFile" : "target-ASTPrinter-Debug-81ac0f6738620eaf4785.json",
+					"name" : "ASTPrinter",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "Driver::@0b016ee7c5b414e95873",
+					"jsonFile" : "target-Driver-Debug-c7ec41a89e511e816fb1.json",
+					"name" : "Driver",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "ErrReporter::@38368af917f072842415",
+					"jsonFile" : "target-ErrReporter-Debug-ef4b9eb7a5868b050e3e.json",
+					"name" : "ErrReporter",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "IRLib::@7bd47b404d1c486f666e",
+					"jsonFile" : "target-IRLib-Debug-d4fff8dd06add21737c3.json",
+					"name" : "IRLib",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "Parser::@0b016ee7c5b414e95873",
+					"jsonFile" : "target-Parser-Debug-98e1ecf38bd0a06b67e9.json",
+					"name" : "Parser",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "Scanner::@0b016ee7c5b414e95873",
+					"jsonFile" : "target-Scanner-Debug-85fcef9c2ef64aef42ae.json",
+					"name" : "Scanner",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "SysYFCompiler::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-SysYFCompiler-Debug-357b2a8b23c252d4a164.json",
+					"name" : "SysYFCompiler",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 5,
+					"id" : "SysYFIRBuilder::@7dba5afa2263daf2439d",
+					"jsonFile" : "target-SysYFIRBuilder-Debug-b592a3fce31b49ac77d6.json",
+					"name" : "SysYFIRBuilder",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/slxia/Desktop/PW6/povalqmfr720211123152227/out/build/x64-Debug",
+		"source" : "C:/Users/slxia/Desktop/PW6/povalqmfr720211123152227"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 2
+	}
+}
