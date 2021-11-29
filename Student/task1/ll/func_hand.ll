@@ -30,7 +30,7 @@ define dso_local i32 @main() #0 {
     %7 = alloca i32, align 4            
     store i32 %6, i32* %7, align 4      ; store the data returned
     %8 = load i32, i32* %3, align 4
-    %9 = load i32, i32* %7, align       ; load add(a, b) and c
+    %9 = load i32, i32* %7, align 4      ; load add(a, b) and c
     %10 = add i32 %8, %9                ; add add(a, b), c
     ret i32 %10                         ; return result
 }
