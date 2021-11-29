@@ -25,7 +25,7 @@ define i32 @main() #0 {
 	%9 = load i32, i32* @a, align 4 ; %9 = @a
 	%10 = sub i32 %9, 1             ; %10 = %9 - 1
 	store i32 %10, i32* @a, align 4 ; @a = %10
-	br label %2, !llvm.loop !5      ; 无条件跳转到 %2
+	br label %2, !llvm.loop !6      ; 无条件跳转到 %2
 
 11:																							 ; preds = %2
 	%12 = load i32, i32* @b, align 4 ; %12 = @b
