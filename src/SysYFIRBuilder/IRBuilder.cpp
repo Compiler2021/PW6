@@ -64,9 +64,24 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
     scope.exit();
 }
 
-void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {}
+void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
+    auto Argument = builder->get_module()->get_functions().back()->arg_begin();//当前的函数应该是函数表中最后一个函数
+    for(auto param:node.params){
+        param->accept(*this);                                               //访问参数
+        auto paramAlloc=builder->create_alloca(TypeMap[param->param_type]);     //分配空间
+        builder->create_store(*Argument,paramAlloc);                            //存参数的值
+        scope.push(param->name,paramAlloc);                              //加入符号表
+        Argument++;                                                             //下一个参数值
+    }
+}
 
-void IRBuilder::visit(SyntaxTree::FuncParam &node) {}
+void IRBuilder::visit(SyntaxTree::FuncParam &node) {
+    for(auto Exp:node.array_index){                                             //遍历每个Expr
+        if (Exp != nullptr){
+            Exp->accept(*this);
+        }
+    }
+}
 
 void IRBuilder::visit(SyntaxTree::VarDef &node) {}
 
