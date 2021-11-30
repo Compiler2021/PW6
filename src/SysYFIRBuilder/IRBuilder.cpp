@@ -4,6 +4,7 @@
 #define CONST_FLOAT(num) ConstantFloat::get(num, module.get())
 
 // You can define global variables and functions here
+bool is_global = 1; // at first it is global
 // to store state
 
 // store temporary value
@@ -31,7 +32,21 @@ void IRBuilder::visit(SyntaxTree::Assembly &node) {
 
 // You need to fill them
 
-void IRBuilder::visit(SyntaxTree::InitVal &node) {}
+void IRBuilder::visit(SyntaxTree::InitVal &node) {
+    if(node.isExp){
+        node.expr->accept(*this);           // inside expr, this would help get value
+                                            // VarDef hold the place for alloca
+    }
+    else{
+        int i = 0;
+        int num = node.elementList.size();
+        for(auto item: node.elementList){
+            item->accept(*this);
+            i++;
+        }                                   // we will wait to see if there needs more data pass
+    }
+    return;
+}
 
 void IRBuilder::visit(SyntaxTree::FuncDef &node) {}
 
@@ -39,7 +54,34 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {}
 
 void IRBuilder::visit(SyntaxTree::FuncParam &node) {}
 
-void IRBuilder::visit(SyntaxTree::VarDef &node) {}
+void IRBuilder::visit(SyntaxTree::VarDef &node) {   // we will need to know glob/local here
+    bool is_array = false;
+    auto zero_initializer = ConstantZero::get(Int32Type, module.get());
+    if(is_global)
+    {
+
+    }
+    if (node.is_constant)
+    {
+        static ConstantInt *get(,module.get())
+    }
+        //std::cout << "const ";
+    //std::cout << type2str[node.btype] << " " << node.name;
+    for (auto length : node.array_length) {
+        //std::cout << "[";
+        length->accept(*this);
+        //std::cout << "]";
+        is_array = true;
+    }
+    if (node.is_inited) {
+        //int tmp = indent;
+        //indent = 0;
+        std::cout << " = ";
+        node.initializers->accept(*this);
+        //indent = tmp;
+    }
+    //std::cout << ";" << std::endl;
+}
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {}
 
