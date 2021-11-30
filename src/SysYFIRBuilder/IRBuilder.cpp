@@ -1,4 +1,6 @@
 #include "IRBuilder.h"
+#include "BasicBlock.h"
+#include "SyntaxTree.h"
 
 #define CONST_INT(num) ConstantInt::get(num, module.get())
 #define CONST_FLOAT(num) ConstantFloat::get(num, module.get())
@@ -87,11 +89,28 @@ void IRBuilder::visit(SyntaxTree::VarDef &node) {}
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {}
 
-void IRBuilder::visit(SyntaxTree::AssignStmt &node) {}
+void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
+    node.target->accept(*this);
+    auto dest = tmp_val; // 获取左值
+    node.value->accept(*this);
+    auto src = tmp_val; // 获取等号右边表达式的值
+    this->builder->create_store(src, dest); // 存储值
+    tmp_val = src; // 整个表达式的值就是等号右边的表达式的值
+}
 
-void IRBuilder::visit(SyntaxTree::Literal &node) {}
+void IRBuilder::visit(SyntaxTree::Literal &node) {
+    if (node.literal_type == SyntaxTree::Type::INT) // 字面量是个整形
+        tmp_val = CONST_INT(node.int_const);
+    else // 字面量是个浮点数
+        tmp_val = CONST_FLOAT(node.float_const);
+}
 
-void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {}
+void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
+    node.ret->accept(*this);
+    auto ret_val = tmp_val;
+    this->builder->create_ret(ret_val);
+    tmp_val = nullptr; // return 语句没有值
+}
 
 void IRBuilder::visit(SyntaxTree::BlockStmt &node) {}
 
