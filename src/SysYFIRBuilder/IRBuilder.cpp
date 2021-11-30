@@ -16,6 +16,7 @@ Type *INT32_T;
 Type *FLOAT_T;
 Type *INT32PTR_T;
 Type *FLOATPTR_T;
+std::map<SyntaxTree::Type,Type *> TypeMap;
 
 void IRBuilder::visit(SyntaxTree::Assembly &node) {
     VOID_T = Type::get_void_type(module.get());
@@ -24,6 +25,12 @@ void IRBuilder::visit(SyntaxTree::Assembly &node) {
     FLOAT_T = Type::get_float_type(module.get());
     INT32PTR_T = Type::get_int32_ptr_type(module.get());
     FLOATPTR_T = Type::get_float_ptr_type(module.get());
+
+    TypeMap[SyntaxTree::Type::VOID]=VOID_T;
+    TypeMap[SyntaxTree::Type::BOOL]=INT1_T;
+    TypeMap[SyntaxTree::Type::INT]=INT32_T;
+    TypeMap[SyntaxTree::Type::FLOAT]=FLOAT_T;
+
     for (const auto &def : node.global_defs) {
         def->accept(*this);
     }
@@ -33,7 +40,29 @@ void IRBuilder::visit(SyntaxTree::Assembly &node) {
 
 void IRBuilder::visit(SyntaxTree::InitVal &node) {}
 
-void IRBuilder::visit(SyntaxTree::FuncDef &node) {}
+void IRBuilder::visit(SyntaxTree::FuncDef &node) {
+    std::vector<Type *> params;
+    for(auto param:node.param_list->params){
+        params.push_back(TypeMap[param->param_type]);
+    }
+    auto FuncType = FunctionType::get(TypeMap[node.ret_type], params);
+    auto Func = Function::create(FuncType, node.name, builder->get_module());
+    scope.push(node.name,Func);
+    auto bb = BasicBlock::create(builder->get_module(), "entry", Func);
+    builder->set_insert_point(bb);
+    scope.enter();
+    node.param_list->accept(*this);
+    if(node.name=="main"){
+        builder->create_call(Func, std::vector<Value *>{});
+    }
+    for (auto statement : node.body->body) {
+        statement->accept(*this);
+        if(dynamic_cast<SyntaxTree::ReturnStmt*>(statement.get())){
+            break;
+        }
+    }
+    scope.exit();
+}
 
 void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {}
 
