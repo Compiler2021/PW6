@@ -107,6 +107,14 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
     }
 }
 
+void IRBuilder::visit(SyntaxTree::FuncParam &node) {
+    for(auto Exp:node.array_index){                                             //遍历每个Expr
+        if (Exp != nullptr){
+            Exp->accept(*this);
+        }
+    }
+}
+
 void IRBuilder::visit(SyntaxTree::VarDef &node)
 { // we will need to know glob/local here // seems const is not considered
     /* first judge is int or float */
