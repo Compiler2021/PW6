@@ -118,9 +118,171 @@ void IRBuilder::visit(SyntaxTree::EmptyStmt &node) {}
 
 void IRBuilder::visit(SyntaxTree::ExprStmt &node) {}
 
-void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {}
+void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {
+    node.rhs->accept(*this);
+    auto rhs = tmp_val;
+    if (tmp_val->get_type()->is_float_type())
+        tmp_val = this->builder->create_fcmp_eq(rhs, CONST_FLOAT(0));
+    else 
+        tmp_val = this->builder->create_fcmp_eq(rhs, CONST_INT(0));
+    // 如果 rhs 为 0，那 tmp_val = 1 否则 tmp_val = 0
+}
 
-void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {}
+void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
+    if (node.op == SyntaxTree::BinaryCondOp::LOR) {
+        node.lhs->accept(*this);
+
+        auto if_true = BasicBlock::create( // 短路计算
+                this->module.get(),
+                "if_true",
+                this->builder->get_insert_block()->get_parent());
+        auto if_false = BasicBlock::create(
+                this->module.get(),
+                "if_false",
+                this->builder->get_insert_block()->get_parent());
+
+        if (tmp_val->get_type()->is_float_type()) // 为真则不用算右边
+            tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
+        else 
+            tmp_val = this->builder->create_icmp_ne(tmp_val, CONST_INT(0));
+
+        Value *ret = this->builder->create_zext(tmp_val, INT32_T);
+        auto retAlloca = this->builder->create_alloca(INT32_T); // 保存表达式比较结果
+        this->builder->create_store(ret, retAlloca);
+
+        this->builder->create_cond_br(tmp_val, if_true, if_false);
+        this->builder->set_insert_point(if_false);
+
+        node.rhs->accept(*this);
+        if (tmp_val->get_type()->is_float_type())
+            tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
+        else 
+            tmp_val = this->builder->create_icmp_ne(tmp_val, CONST_INT(0));
+
+        ret = this->builder->create_load(retAlloca);
+        tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+        tmp_val = this->builder->create_iadd(ret, tmp_val); // 把两个逻辑表达式的结果加在一起
+        this->builder->create_store(tmp_val, retAlloca);    // 结果存到 retAlloca
+        this->builder->create_br(if_true);
+        
+        this->builder->set_insert_point(if_true); // 左式为真，启动短路计算
+        ret = this->builder->create_load(retAlloca);
+        tmp_val = this->builder->create_icmp_gt(ret, CONST_INT(0)); // 只要结果不是 0 就代表有一个为 1
+        return;
+    }
+    if (node.op == SyntaxTree::BinaryCondOp::LAND) {
+        node.lhs->accept(*this);
+
+        auto if_true = BasicBlock::create( // 短路计算
+                this->module.get(),
+                "if_true",
+                this->builder->get_insert_block()->get_parent());
+        auto if_false = BasicBlock::create(
+                this->module.get(),
+                "if_false",
+                this->builder->get_insert_block()->get_parent());
+
+        if (tmp_val->get_type()->is_float_type()) // 为假则不用算右边
+            tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
+        else 
+            tmp_val = this->builder->create_icmp_ne(tmp_val, CONST_INT(0));
+
+        Value *ret = this->builder->create_zext(tmp_val, INT32_T);
+        auto retAlloca = this->builder->create_alloca(INT32_T);
+        this->builder->create_store(ret, retAlloca);
+
+        this->builder->create_cond_br(tmp_val, if_true, if_false);
+        this->builder->set_insert_point(if_true);
+
+        node.rhs->accept(*this);
+        if (tmp_val->get_type()->is_float_type())
+            tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
+        else
+            tmp_val = this->builder->create_icmp_ne(tmp_val, CONST_INT(0));
+        ret = this->builder->create_load(retAlloca);
+        tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+        tmp_val = this->builder->create_iadd(ret, tmp_val); // 把两个表达式结果加一起
+        this->builder->create_store(tmp_val, retAlloca);
+        this->builder->create_br(if_false);
+
+        this->builder->set_insert_point(if_false); // 左式为假，启动短路计算
+        ret = this->builder->create_load(retAlloca);
+        tmp_val = this->builder->create_icmp_eq(ret, CONST_INT(2)); // 只要结果等于 2 那就是真
+        return;
+    }
+    
+    node.lhs->accept(*this);
+    auto lhs = tmp_val;
+    node.lhs->accept(*this);
+    auto rhs = tmp_val;
+    if (node.op == SyntaxTree::BinaryCondOp::EQ) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T); // 类型提升
+            tmp_val = this->builder->create_fcmp_eq(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T); // 类型提升
+            tmp_val = this->builder->create_fcmp_eq(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_eq(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinaryCondOp::GT) { // 以下基本重复，应该可以使用函数指针优化
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_gt(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_gt(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_gt(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinaryCondOp::GTE) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_ge(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_ge(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_ge(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinaryCondOp::NEQ) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_ne(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_ne(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_ne(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinaryCondOp::LT) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_lt(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_lt(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_lt(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinaryCondOp::LTE) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_le(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fcmp_le(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_icmp_le(lhs, rhs);
+        }
+    }
+}
 
 void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {}
 
