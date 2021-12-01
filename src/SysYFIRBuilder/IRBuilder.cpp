@@ -90,7 +90,14 @@ void IRBuilder::visit(SyntaxTree::FuncParam &node) {
 
 void IRBuilder::visit(SyntaxTree::VarDef &node) {}
 
-void IRBuilder::visit(SyntaxTree::LVal &node) {}
+void IRBuilder::visit(SyntaxTree::LVal &node) {
+    auto ret = this->scope.find(node.name, false); // 根据名字获取值
+    if (!node.array_index.empty()) {               // 如果是个数组
+        node.array_index[0]->accept(*this);        // 计算下标表达式的值
+        ret = this->builder->create_gep(ret, {tmp_val}); // 获取数组元素
+    }
+    tmp_val = ret;
+}
 
 void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
     node.value->accept(*this);
@@ -115,11 +122,23 @@ void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
     tmp_val = nullptr; // return 语句没有值
 }
 
-void IRBuilder::visit(SyntaxTree::BlockStmt &node) {}
+void IRBuilder::visit(SyntaxTree::BlockStmt &node) {
+    this->scope.enter(); // 进入一个新的块作用域
+    for (const auto &stmt : node.body) {
+        stmt->accept(*this); // 对块里每条语句都生成代码
+        if (dynamic_cast<SyntaxTree::ReturnStmt *>(stmt.get())) // 遇到返回语句，以后的语句不用生成代码了
+            break;
+    }
+    tmp_val = nullptr;
+    this->scope.exit(); // 退出块作用域
+}
 
 void IRBuilder::visit(SyntaxTree::EmptyStmt &node) {}
 
-void IRBuilder::visit(SyntaxTree::ExprStmt &node) {}
+void IRBuilder::visit(SyntaxTree::ExprStmt &node) {
+    node.exp->accept(*this);
+    // 表达式的值就是 exp 的值，无需改变 tmp_val
+}
 
 void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {
     node.rhs->accept(*this);
@@ -137,11 +156,11 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
 
         auto if_true = BasicBlock::create( // 短路计算
                 this->module.get(),
-                "if_true",
+                "if_true" + std::to_string(label++),
                 this->builder->get_insert_block()->get_parent());
         auto if_false = BasicBlock::create(
                 this->module.get(),
-                "if_false",
+                "if_false" + std::to_string(label++),
                 this->builder->get_insert_block()->get_parent());
 
         if (tmp_val->get_type()->is_float_type()) // 为真则不用算右边
@@ -178,11 +197,11 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
 
         auto if_true = BasicBlock::create( // 短路计算
                 this->module.get(),
-                "if_true",
+                "if_true" + std::to_string(label++),
                 this->builder->get_insert_block()->get_parent());
         auto if_false = BasicBlock::create(
                 this->module.get(),
-                "if_false",
+                "if_false" + std::to_string(label++),
                 this->builder->get_insert_block()->get_parent());
 
         if (tmp_val->get_type()->is_float_type()) // 为假则不用算右边
@@ -351,7 +370,15 @@ void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
     }
 }
 
-void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {}
+void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {
+    auto ret = this->scope.find(node.name, true);
+    std::vector<Value *> params{}; // 实参集合
+    for (const auto &expr : node.params) { // 对每个实参进行求值，并放到 params 中
+        expr->accept(*this);
+        params.push_back(tmp_val);
+    }
+    tmp_val = this->builder->create_call(ret, std::move(params));
+}
 
 void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     auto trueBB = BasicBlock::create(this->builder->get_module(), "IfTrue" + std::to_string(label++), this->builder->get_module()->get_functions().back());
