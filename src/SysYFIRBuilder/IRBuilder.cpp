@@ -11,6 +11,7 @@ int is_global = 0; // at first it is global
 
 // store temporary value
 Value *tmp_val = nullptr;
+Value *tmp_addr = nullptr; // 地址
 int label = 0;
 std::vector<BasicBlock*> tmp_condbb;
 std::vector<BasicBlock*> tmp_falsebb;
@@ -208,17 +209,20 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
     auto ret = this->scope.find(node.name, false); // 根据名字获取值
     if (!node.array_index.empty()) {               // 如果是个数组
         node.array_index[0]->accept(*this);        // 计算下标表达式的值
-        ret = this->builder->create_gep(ret, {tmp_val}); // 获取数组元素
+        ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
+        tmp_addr = ret;
+        tmp_val = this->builder->create_load(tmp_addr);
+        return;
     }
-    tmp_val = ret;
-    std::cout <<"visiting Lval\n";
+    tmp_addr = ret;
+    tmp_val = this->builder->create_load(ret);
 }
 
 void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
     node.value->accept(*this);
     auto src = tmp_val; // 获取等号右边表达式的值
     node.target->accept(*this);
-    auto dest = tmp_val; // 获取左值
+    auto dest = tmp_addr; // 获取左值
     this->builder->create_store(src, dest); // 存储值
     tmp_val = src; // 整个表达式的值就是等号右边的表达式的值
 }
@@ -232,8 +236,7 @@ void IRBuilder::visit(SyntaxTree::Literal &node) {
 
 void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
     node.ret->accept(*this);
-    auto ret_load = builder->create_load(tmp_val);
-    this->builder->create_ret(ret_load);
+    this->builder->create_ret(tmp_val);
     tmp_val = nullptr; // return 语句没有值
 }
 
@@ -457,7 +460,7 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
             lhs = this->builder->create_sitofp(lhs, FLOAT_T);
             tmp_val = this->builder->create_fmul(lhs, rhs);
         } else {
-            auto temp = builder->create_imul(lhs, rhs);
+            tmp_val = builder->create_imul(lhs, rhs);
             /*tmp_val = dynamic_cast<Value *>(temp);*/  // Critical Problem! it will create mul i32*, which should not exist; 
         }
     } else if (node.op == SyntaxTree::BinOp::DIVIDE) {
