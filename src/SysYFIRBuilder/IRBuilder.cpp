@@ -90,10 +90,10 @@ void IRBuilder::visit(SyntaxTree::VarDef &node) {}
 void IRBuilder::visit(SyntaxTree::LVal &node) {}
 
 void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
-    node.target->accept(*this);
-    auto dest = tmp_val; // 获取左值
     node.value->accept(*this);
     auto src = tmp_val; // 获取等号右边表达式的值
+    node.target->accept(*this);
+    auto dest = tmp_val; // 获取左值
     this->builder->create_store(src, dest); // 存储值
     tmp_val = src; // 整个表达式的值就是等号右边的表达式的值
 }
@@ -284,9 +284,69 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
     }
 }
 
-void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {}
+void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
+    node.lhs->accept(*this);
+    auto lhs = tmp_val;
+    node.rhs->accept(*this);
+    auto rhs = tmp_val;
+    if (node.op == SyntaxTree::BinOp::PLUS) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fadd(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fadd(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_iadd(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinOp::MINUS) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fsub(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fsub(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_isub(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinOp::MULTIPLY) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fmul(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fmul(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_imul(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinOp::DIVIDE) {
+        if (lhs->get_type()->is_float_type()) {
+            if (rhs->get_type()->is_integer_type())
+                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+            tmp_val = this->builder->create_fdiv(lhs, rhs);
+        } else if (rhs->get_type()->is_float_type()) {
+            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+            tmp_val = this->builder->create_fdiv(lhs, rhs);
+        } else {
+            tmp_val = this->builder->create_isdiv(lhs, rhs);
+        }
+    } else if (node.op == SyntaxTree::BinOp::MODULO) {
+        tmp_val = this->builder->create_isrem(lhs, rhs);
+    }
+}
 
-void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {}
+void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
+    node.rhs->accept(*this);
+    if (node.op == SyntaxTree::UnaryOp::MINUS) {
+        if (tmp_val->get_type()->is_float_type())
+            tmp_val = this->builder->create_fsub(CONST_FLOAT(0.0), tmp_val);
+        else 
+            tmp_val = this->builder->create_isub(CONST_INT(0), tmp_val);
+    }
+}
 
 void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {}
 
