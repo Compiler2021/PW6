@@ -44,18 +44,22 @@ void IRBuilder::visit(SyntaxTree::Assembly &node) {
 
 // You need to fill them
 
-void IRBuilder::visit(SyntaxTree::InitVal &node) {
-    if(node.isExp){
-        node.expr->accept(*this);           // inside expr, this would help get value
-                                            // VarDef hold the place for alloca
+void IRBuilder::visit(SyntaxTree::InitVal &node)
+{
+    if (node.isExp)
+    {
+        node.expr->accept(*this); // inside expr, this would help get value
+                                  // VarDef hold the place for alloca
     }
-    else{
+    else
+    {
         int i = 0;
         int num = node.elementList.size();
-        for(auto item: node.elementList){
+        for (auto item : node.elementList)
+        {
             item->accept(*this);
-            i++;
-        }                                   // we will wait to see if there needs more data pass
+            i++; // store the number 
+        } // we will wait to see if there needs more data pass
     }
     return;
 }
@@ -105,94 +109,93 @@ void IRBuilder::visit(SyntaxTree::FuncParam &node) {
     }
 }
 
-void IRBuilder::visit(SyntaxTree::VarDef &node) {   // we will need to know glob/local here
-    bool is_array = false;
-    if(node.btype == SyntaxTree::Type::INT)
+void IRBuilder::visit(SyntaxTree::VarDef &node)
+{ // we will need to know glob/local here // seems const is not considered
+    /* first judge is int or float */
+    Type *Vartype;
+    if (node.btype == SyntaxTree::Type::INT)
     {
-        auto zero_initializer = ConstantZero::get(INT32_T, module.get());
-        if(!is_global)
+        Vartype = INT32_T;
+    }
+    else
+    {
+        Vartype = FLOAT_T;
+    }
+    auto zero_initializer = ConstantZero::get(Vartype, module.get());
+    int count = 0;
+    for (auto length : node.array_length)
+    {
+        length->accept(*this);
+        count++;
+    }
+    if (node.is_inited) 
+    {
+        node.initializers->accept(*this);
+        auto initializer = tmp_val; // is inited
+        if (scope.in_global())
         {
-            for (auto length : node.array_length) {
-                length->accept(*this);
-                is_array = true;
-            }   // this should not exist
-            if (node.is_inited) 
+            if (count == 0) // this is not an array
             {
-                node.initializers->accept(*this);   // get me the initial value // how?
-                auto global_init = GlobalVariable::create(node.name, module.get(), INT32_T, true, zero_initializer);
+                auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
+                scope.push(node.name, global_init);
             }
             else
             {
-                if (node.is_constant)
-                    auto global_init = GlobalVariable::create(node.name, module.get(), INT32_T, true, zero_initializer);
-                else
-                    auto global_init = GlobalVariable::create(node.name, module.get(), INT32_T, false, zero_initializer);
+                
+                auto *arrayType_global = ArrayType::get(Vartype, count);
+                auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
+                scope.push(node.name, arrayGlobal);
             }
         }
         else
         {
-            for (auto length : node.array_length) {
-                length->accept(*this);
-                is_array = true;
-            }   // this should exist but wait a minute
-            if (node.is_inited) 
+            if (count == 0) // this is not an array
             {
-                node.initializers->accept(*this);   // get me the initial value // how?
-                auto Alloca = builder->create_alloca(INT32_T); // should we do more about this alloca?
-                auto Load = builder->create_load(CONST_INT(0)); // where to get data?
+                auto local_init = builder->create_alloca(Vartype);
+                scope.push(node.name, local_init);
+                builder->create_load(tmp_val);
             }
             else
             {
-                if (node.is_constant)
-                    auto Alloca = builder->create_alloca(INT32_T);
-                else
-                    auto Alloca = builder->create_alloca(INT32_T);
+                auto *arrayType_local = ArrayType::get(Vartype, count);
+                auto arrayLocal = builder->create_alloca(arrayType_local);
+                scope.push(node.name, arrayLocal);
             }
         }
     }
-    else        // FLOAT
+    else
     {
-        auto zero_initializer = ConstantZero::get(FLOAT_T, module.get());
-        if(!is_global)
+        if (scope.in_global())
         {
-            for (auto length : node.array_length) {
-                length->accept(*this);
-                is_array = true;
-            }   // this should not exist
-            if (node.is_inited) 
+            if (count == 0) // this is not an array
             {
-                node.initializers->accept(*this);   // get me the initial value // how?
-                auto global_init = GlobalVariable::create(node.name, module.get(), FLOAT_T, true, zero_initializer);
+                auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, zero_initializer);
+                scope.push(node.name, global_init);
             }
             else
             {
-                if (node.is_constant)
-                    auto global_init = GlobalVariable::create(node.name, module.get(), FLOAT_T, true, zero_initializer);
-                else
-                    auto global_init = GlobalVariable::create(node.name, module.get(), FLOAT_T, false, zero_initializer);
+                
+                auto *arrayType_global = ArrayType::get(Vartype, count);
+                auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
+                scope.push(node.name, arrayGlobal);
             }
         }
         else
         {
-            for (auto length : node.array_length) {
-                length->accept(*this);
-                is_array = true;
-            }   // this should exist but wait a minute
-            if (node.is_inited) 
+            if (count == 0) // this is not an array
             {
-                node.initializers->accept(*this);   // get me the initial value // how?
-                auto Alloca = builder->create_alloca(FLOAT_T); // should we do more about this alloca?
-                auto Load = builder->create_load(CONST_FLOAT(0)); // where to get data?
+                auto local_init = builder->create_alloca(Vartype);
+                scope.push(node.name, local_init);
             }
             else
             {
-                if (node.is_constant)
-                    auto Alloca = builder->create_alloca(FLOAT_T);
-                else
-                    auto Alloca = builder->create_alloca(FLOAT_T);
+                auto *arrayType_local = ArrayType::get(Vartype, count);
+                auto arrayLocal = builder->create_alloca(arrayType_local);
+                scope.push(node.name, arrayLocal);
             }
         }
     }
+    
 }
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {
