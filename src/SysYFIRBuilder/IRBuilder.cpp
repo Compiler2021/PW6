@@ -235,6 +235,11 @@ void IRBuilder::visit(SyntaxTree::Literal &node) {
 }
 
 void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
+    if (node.ret.get() == nullptr) { // 返回值为 void 
+        this->builder->create_void_ret();
+        tmp_val = nullptr;
+        return;
+    }
     node.ret->accept(*this);
     this->builder->create_ret(tmp_val);
     tmp_val = nullptr; // return 语句没有值
