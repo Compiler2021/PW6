@@ -72,9 +72,7 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
         param->accept(*this);                                               //访问参数
         for(auto Expr:param->array_index){
             if(Expr){
-                Expr->accept(*this);
-                auto ArType = ArrayType::get(TypeMap[param->param_type], dynamic_cast<ConstantInt *>(tmp_val)->get_value());
-                auto paramAlloc=builder->create_alloca(ArType);
+                auto paramAlloc=builder->create_alloca(INT32PTR_T);
                 builder->create_store(*Argument,paramAlloc);                            //存参数的值
                 scope.push(param->name,paramAlloc);                              //加入符号表
             }
