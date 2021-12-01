@@ -90,19 +90,19 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
 
 void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
     auto Argument = builder->get_module()->get_functions().back()->arg_begin();//当前的函数应该是函数表中最后一个函数
-    for(auto param:node.params){
+    for (const auto &param : node.params){
         param->accept(*this);                                               //访问参数
-        for(auto Expr:param->array_index){
-            if(Expr){
-                auto paramAlloc=builder->create_alloca(INT32PTR_T);
-                builder->create_store(*Argument,paramAlloc);                            //存参数的值
-                scope.push(param->name,paramAlloc);                              //加入符号表
-            }
-            else{
-                auto paramAlloc=builder->create_alloca(TypeMap[param->param_type]);     //分配空间
-                builder->create_store(*Argument,paramAlloc);                            //存参数的值
-                scope.push(param->name,paramAlloc);                              //加入符号表
-            }
+        if(!param->array_index.empty()) {
+            auto paramAlloc = 
+                param->param_type == SyntaxTree::Type::FLOAT
+                ? builder->create_alloca(FLOATPTR_T)
+                : builder->create_alloca(INT32PTR_T);
+            builder->create_store(*Argument, paramAlloc);                            //存参数的值
+            scope.push(param->name, paramAlloc);                              //加入符号表
+        } else {
+            auto paramAlloc = builder->create_alloca(TypeMap[param->param_type]);     //分配空间
+            builder->create_store(*Argument, paramAlloc);                            //存参数的值
+            scope.push(param->name, paramAlloc);                              //加入符号表
         }
         Argument++;                                                             //下一个参数值
     }
@@ -358,7 +358,7 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
     
     node.lhs->accept(*this);
     auto lhs = tmp_val;
-    node.lhs->accept(*this);
+    node.rhs->accept(*this);
     auto rhs = tmp_val;
     if (node.op == SyntaxTree::BinaryCondOp::EQ) {
         if (lhs->get_type()->is_float_type()) {
