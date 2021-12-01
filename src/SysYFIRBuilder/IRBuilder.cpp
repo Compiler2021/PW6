@@ -137,7 +137,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             if (count == 0) // this is not an array
             {
                 auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
-                scope.push(node.name, global_init);
+                scope.push(node.name, global_init); // ok
             }
             else
             {
@@ -153,7 +153,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             {
                 auto local_init = builder->create_alloca(Vartype);
                 scope.push(node.name, local_init);
-                builder->create_load(tmp_val);
+                builder->create_store(tmp_val, local_init);
             }
             else
             {
@@ -205,6 +205,7 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
         ret = this->builder->create_gep(ret, {tmp_val}); // 获取数组元素
     }
     tmp_val = ret;
+    std::cout <<"visiting Lval\n";
 }
 
 void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
@@ -225,8 +226,8 @@ void IRBuilder::visit(SyntaxTree::Literal &node) {
 
 void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
     node.ret->accept(*this);
-    auto ret_val = tmp_val;
-    this->builder->create_ret(ret_val);
+    auto ret_load = builder->create_load(tmp_val);
+    this->builder->create_ret(ret_load);
     tmp_val = nullptr; // return 语句没有值
 }
 
@@ -450,7 +451,8 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
             lhs = this->builder->create_sitofp(lhs, FLOAT_T);
             tmp_val = this->builder->create_fmul(lhs, rhs);
         } else {
-            tmp_val = this->builder->create_imul(lhs, rhs);
+            auto temp = builder->create_imul(lhs, rhs);
+            /*tmp_val = dynamic_cast<Value *>(temp);*/  // Critical Problem! it will create mul i32*, which should not exist; 
         }
     } else if (node.op == SyntaxTree::BinOp::DIVIDE) {
         if (lhs->get_type()->is_float_type()) {
