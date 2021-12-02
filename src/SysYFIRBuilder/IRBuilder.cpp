@@ -412,9 +412,8 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {
     auto ret = this->scope.find(node.name, false); // 根据名字获取值
-    if (ret == nullptr)
-        std::cout << node.name << std::endl;
     if (!node.array_index.empty()) {               // 如果是个数组
+        node.array_index[0]->accept(*this);        // 计算下标表达式的值
         if (scope.in_global()) {
             auto index = const_expr;
             const_expr.is_valid = true;
@@ -427,7 +426,6 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
                 const_expr.float_value = get->second[index.int_value];
             }
         } else {
-            node.array_index[0]->accept(*this);        // 计算下标表达式的值
             ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
             tmp_addr = ret;
             tmp_val = this->builder->create_load(tmp_addr);
@@ -531,19 +529,23 @@ void IRBuilder::visit(SyntaxTree::ExprStmt &node) {
 
 void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {
     node.rhs->accept(*this);
-    auto rhs = tmp_val;
-    if (tmp_val->get_type()->is_float_type()) 
-        tmp_val = this->builder->create_fcmp_eq(rhs, CONST_FLOAT(0));
-    else 
-        tmp_val = this->builder->create_fcmp_eq(rhs, CONST_INT(0));
-    // 如果 rhs 为 0，那 tmp_val = 1 否则 tmp_val = 0
-    if (const_expr.is_valid) {
-        if (const_expr.is_int)
-            const_expr.int_value = const_expr.int_value == 0;
-        else {
-            const_expr.is_int = true;
-            const_expr.int_value = const_expr.float_value == 0.0;
+    if (scope.in_global()) {
+        if (const_expr.is_valid) {
+            if (const_expr.is_int)
+                const_expr.int_value = const_expr.int_value == 0;
+            else {
+                const_expr.is_int = true;
+                const_expr.int_value = const_expr.float_value == 0.0;
+            }
         }
+    } else {
+        auto rhs = tmp_val;
+        if (tmp_val->get_type()->is_float_type()) 
+            tmp_val = this->builder->create_fcmp_eq(rhs, CONST_FLOAT(0));
+        else 
+            tmp_val = this->builder->create_fcmp_eq(rhs, CONST_INT(0));
+        // 如果 rhs 为 0，那 tmp_val = 1 否则 tmp_val = 0
+        const_expr.is_valid = false;
     }
 }
 
@@ -840,133 +842,152 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
     auto rhs_const = const_expr;
 
     if (node.op == SyntaxTree::BinOp::PLUS) {
-        if (lhs->get_type()->is_float_type()) {
-            if (rhs->get_type()->is_integer_type())
-                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
-            tmp_val = this->builder->create_fadd(lhs, rhs);
-        } else if (rhs->get_type()->is_float_type()) {
-            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
-            tmp_val = this->builder->create_fadd(lhs, rhs);
-        } else {
-            tmp_val = this->builder->create_iadd(lhs, rhs);
-        }
-        if (lhs_const.is_valid && rhs_const.is_valid) {
-            const_expr.is_valid = true;
-            if (lhs_const.is_int) {
-                if (rhs_const.is_int) {
-                    const_expr.is_int = true;
-                    const_expr.int_value = lhs_const.int_value + rhs_const.int_value;
+        if (scope.in_global()) {
+            if (lhs_const.is_valid && rhs_const.is_valid) {
+                const_expr.is_valid = true;
+                if (lhs_const.is_int) {
+                    if (rhs_const.is_int) {
+                        const_expr.is_int = true;
+                        const_expr.int_value = lhs_const.int_value + rhs_const.int_value;
+                    } else {
+                        const_expr.is_int = false;
+                        const_expr.float_value = lhs_const.int_value + rhs_const.float_value;
+                    }
                 } else {
                     const_expr.is_int = false;
-                    const_expr.float_value = lhs_const.int_value + rhs_const.float_value;
+                    const_expr.float_value = rhs_const.is_int
+                        ? lhs_const.float_value + rhs_const.int_value
+                        : lhs_const.float_value + rhs_const.float_value;
                 }
             } else {
-                const_expr.is_int = false;
-                const_expr.float_value = rhs_const.is_int
-                    ? lhs_const.float_value + rhs_const.int_value
-                    : lhs_const.float_value + rhs_const.float_value;
+                const_expr.is_valid = false;
             }
         } else {
+            if (lhs->get_type()->is_float_type()) {
+                if (rhs->get_type()->is_integer_type())
+                    rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+                tmp_val = this->builder->create_fadd(lhs, rhs);
+            } else if (rhs->get_type()->is_float_type()) {
+                lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+                tmp_val = this->builder->create_fadd(lhs, rhs);
+            } else {
+                tmp_val = this->builder->create_iadd(lhs, rhs);
+            }
             const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinOp::MINUS) {
-        if (lhs->get_type()->is_float_type()) {
-            if (rhs->get_type()->is_integer_type())
-                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
-            tmp_val = this->builder->create_fsub(lhs, rhs);
-        } else if (rhs->get_type()->is_float_type()) {
-            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
-            tmp_val = this->builder->create_fsub(lhs, rhs);
-        } else {
-            tmp_val = this->builder->create_isub(lhs, rhs);
-        }
-        if (lhs_const.is_valid && rhs_const.is_valid) {
-            const_expr.is_valid = true;
-            if (lhs_const.is_int) {
-                if (rhs_const.is_int) {
-                    const_expr.is_int = true;
-                    const_expr.int_value = lhs_const.int_value - rhs_const.int_value;
+        if (scope.in_global()) {
+            if (lhs_const.is_valid && rhs_const.is_valid) {
+                const_expr.is_valid = true;
+                if (lhs_const.is_int) {
+                    if (rhs_const.is_int) {
+                        const_expr.is_int = true;
+                        const_expr.int_value = lhs_const.int_value - rhs_const.int_value;
+                    } else {
+                        const_expr.is_int = false;
+                        const_expr.float_value = lhs_const.int_value - rhs_const.float_value;
+                    }
                 } else {
                     const_expr.is_int = false;
-                    const_expr.float_value = lhs_const.int_value - rhs_const.float_value;
+                    const_expr.float_value = rhs_const.is_int
+                        ? lhs_const.float_value - rhs_const.int_value
+                        : lhs_const.float_value - rhs_const.float_value;
                 }
             } else {
-                const_expr.is_int = false;
-                const_expr.float_value = rhs_const.is_int
-                    ? lhs_const.float_value - rhs_const.int_value
-                    : lhs_const.float_value - rhs_const.float_value;
+                const_expr.is_valid = false;
             }
         } else {
+            if (lhs->get_type()->is_float_type()) {
+                if (rhs->get_type()->is_integer_type())
+                    rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+                tmp_val = this->builder->create_fsub(lhs, rhs);
+            } else if (rhs->get_type()->is_float_type()) {
+                lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+                tmp_val = this->builder->create_fsub(lhs, rhs);
+            } else {
+                tmp_val = this->builder->create_isub(lhs, rhs);
+            }
             const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinOp::MULTIPLY) {
-        if (lhs->get_type()->is_float_type()) {
-            if (rhs->get_type()->is_integer_type())
-                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
-            tmp_val = this->builder->create_fmul(lhs, rhs);
-        } else if (rhs->get_type()->is_float_type()) {
-            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
-            tmp_val = this->builder->create_fmul(lhs, rhs);
-        } else {
-            tmp_val = builder->create_imul(lhs, rhs);
-            /*tmp_val = dynamic_cast<Value *>(temp);*/  // Critical Problem! it will create mul i32*, which should not exist; 
-        }
-        if (lhs_const.is_valid && rhs_const.is_valid) {
-            const_expr.is_valid = true;
-            if (lhs_const.is_int) {
-                if (rhs_const.is_int) {
-                    const_expr.is_int = true;
-                    const_expr.int_value = lhs_const.int_value * rhs_const.int_value;
+        if (scope.in_global()) {
+            if (lhs_const.is_valid && rhs_const.is_valid) {
+                const_expr.is_valid = true;
+                if (lhs_const.is_int) {
+                    if (rhs_const.is_int) {
+                        const_expr.is_int = true;
+                        const_expr.int_value = lhs_const.int_value * rhs_const.int_value;
+                    } else {
+                        const_expr.is_int = false;
+                        const_expr.float_value = lhs_const.int_value * rhs_const.float_value;
+                    }
                 } else {
                     const_expr.is_int = false;
-                    const_expr.float_value = lhs_const.int_value * rhs_const.float_value;
+                    const_expr.float_value = rhs_const.is_int
+                        ? lhs_const.float_value * rhs_const.int_value
+                        : lhs_const.float_value * rhs_const.float_value;
                 }
             } else {
-                const_expr.is_int = false;
-                const_expr.float_value = rhs_const.is_int
-                    ? lhs_const.float_value * rhs_const.int_value
-                    : lhs_const.float_value * rhs_const.float_value;
+                const_expr.is_valid = false;
             }
         } else {
+            if (lhs->get_type()->is_float_type()) {
+                if (rhs->get_type()->is_integer_type())
+                    rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+                tmp_val = this->builder->create_fmul(lhs, rhs);
+            } else if (rhs->get_type()->is_float_type()) {
+                lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+                tmp_val = this->builder->create_fmul(lhs, rhs);
+            } else {
+                tmp_val = builder->create_imul(lhs, rhs);
+            }
             const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinOp::DIVIDE) {
-        if (lhs->get_type()->is_float_type()) {
-            if (rhs->get_type()->is_integer_type())
-                rhs = this->builder->create_sitofp(rhs, FLOAT_T);
-            tmp_val = this->builder->create_fdiv(lhs, rhs);
-        } else if (rhs->get_type()->is_float_type()) {
-            lhs = this->builder->create_sitofp(lhs, FLOAT_T);
-            tmp_val = this->builder->create_fdiv(lhs, rhs);
-        } else {
-            tmp_val = this->builder->create_isdiv(lhs, rhs);
-        }
-        if (lhs_const.is_valid && rhs_const.is_valid) {
-            const_expr.is_valid = true;
-            if (lhs_const.is_int) {
-                if (rhs_const.is_int) {
-                    const_expr.is_int = true;
-                    const_expr.int_value = lhs_const.int_value / rhs_const.int_value;
+        if (scope.in_global()) {
+            if (lhs_const.is_valid && rhs_const.is_valid) {
+                const_expr.is_valid = true;
+                if (lhs_const.is_int) {
+                    if (rhs_const.is_int) {
+                        const_expr.is_int = true;
+                        const_expr.int_value = lhs_const.int_value / rhs_const.int_value;
+                    } else {
+                        const_expr.is_int = false;
+                        const_expr.float_value = lhs_const.int_value / rhs_const.float_value;
+                    }
                 } else {
                     const_expr.is_int = false;
-                    const_expr.float_value = lhs_const.int_value / rhs_const.float_value;
+                    const_expr.float_value = rhs_const.is_int
+                        ? lhs_const.float_value / rhs_const.int_value
+                        : lhs_const.float_value / rhs_const.float_value;
                 }
             } else {
-                const_expr.is_int = false;
-                const_expr.float_value = rhs_const.is_int
-                    ? lhs_const.float_value / rhs_const.int_value
-                    : lhs_const.float_value / rhs_const.float_value;
+                const_expr.is_valid = false;
             }
         } else {
+            if (lhs->get_type()->is_float_type()) {
+                if (rhs->get_type()->is_integer_type())
+                    rhs = this->builder->create_sitofp(rhs, FLOAT_T);
+                tmp_val = this->builder->create_fdiv(lhs, rhs);
+            } else if (rhs->get_type()->is_float_type()) {
+                lhs = this->builder->create_sitofp(lhs, FLOAT_T);
+                tmp_val = this->builder->create_fdiv(lhs, rhs);
+            } else {
+                tmp_val = this->builder->create_isdiv(lhs, rhs);
+            }
             const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinOp::MODULO) {
-        tmp_val = this->builder->create_isrem(lhs, rhs);
-        if (lhs_const.is_valid && rhs_const.is_valid) {
-            const_expr.is_valid = true;
-            const_expr.is_int = true;
-            const_expr.int_value = lhs_const.int_value % rhs_const.int_value;
+        if (scope.in_global()) {
+            if (lhs_const.is_valid && rhs_const.is_valid) {
+                const_expr.is_valid = true;
+                const_expr.is_int = true;
+                const_expr.int_value = lhs_const.int_value % rhs_const.int_value;
+            } else {
+                const_expr.is_valid = false;
+            }
         } else {
+            tmp_val = this->builder->create_isrem(lhs, rhs);
             const_expr.is_valid = false;
         }
     }
@@ -975,15 +996,19 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
 void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
     node.rhs->accept(*this);
     if (node.op == SyntaxTree::UnaryOp::MINUS) {
-        if (tmp_val->get_type()->is_float_type())
-            tmp_val = this->builder->create_fsub(CONST_FLOAT(0.0), tmp_val);
-        else 
-            tmp_val = this->builder->create_isub(CONST_INT(0), tmp_val);
-        if (const_expr.is_valid) {
-            if (const_expr.is_int)
-                const_expr.int_value = -const_expr.int_value;
+        if (scope.in_global()) {
+            if (const_expr.is_valid) {
+                if (const_expr.is_int)
+                    const_expr.int_value = -const_expr.int_value;
+                else 
+                    const_expr.float_value = -const_expr.float_value; 
+            }
+        } else {
+            if (tmp_val->get_type()->is_float_type())
+                tmp_val = this->builder->create_fsub(CONST_FLOAT(0.0), tmp_val);
             else 
-                const_expr.float_value = -const_expr.float_value; 
+                tmp_val = this->builder->create_isub(CONST_INT(0), tmp_val);
+            const_expr.is_valid = false;
         }
     }
 }
