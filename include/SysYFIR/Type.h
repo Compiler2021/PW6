@@ -10,6 +10,7 @@ class FloatType;
 class FunctionType;
 class ArrayType;
 class PointerType;
+class MultiDimensionArrayType;
 
 class Type
 {
@@ -22,6 +23,8 @@ public:
         FunctionTyID,     // Functions
         ArrayTyID,        // Arrays
         PointerTyID,      // Pointer
+        /* modified */
+        MultiArrayTyID,
     };
 
     explicit Type(TypeID tid, Module *m);
@@ -40,6 +43,8 @@ public:
     bool is_function_type() const { return get_type_id() == FunctionTyID; }
 
     bool is_array_type() const { return get_type_id() == ArrayTyID; }
+
+    bool is_multi_array_type() const { return get_type_id() == MultiArrayTyID; }
 
     bool is_pointer_type() const { return get_type_id() == PointerTyID; }
 
@@ -62,6 +67,8 @@ public:
     static PointerType *get_pointer_type(Type *contained);
 
     static ArrayType *get_array_type(Type *contained, unsigned num_elements);
+    /* modified */
+    static MultiDimensionArrayType *get_multi_array_type(Type *contained, std::vector<int> elements_array, unsigned dimension);
 
     Type *get_pointer_element_type();
 
@@ -130,6 +137,24 @@ public:
 private:
     Type *contained_;   // The element type of the array.
     unsigned num_elements_;  // Number of elements in the array.
+}; 
+// create a new type for multi-dimension array
+
+class MultiDimensionArrayType : public Type {
+public:
+    MultiDimensionArrayType(Type *contained, std::vector<int> elements_array, unsigned dimension);
+
+    static bool is_valid_element_type(Type *ty);
+
+    static MultiDimensionArrayType *get(Type *contained, std::vector<int> elements_array, unsigned dimension);
+
+    Type *get_element_type() const { return contained_; }
+    unsigned get_num_of_dimension() const { return dimension; }
+    unsigned get_num_of_elements_by_dimension(int dimension) const { return elements_array[dimension]; } // seg fault be watched
+private:
+    Type *contained_;
+    std::vector<int> elements_array; // could?
+    unsigned dimension;
 };
 
 class PointerType : public Type {

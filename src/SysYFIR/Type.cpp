@@ -55,6 +55,11 @@ ArrayType *Type::get_array_type(Type *contained, unsigned num_elements)
 {
     return ArrayType::get(contained, num_elements);
 }
+/* modified */
+MultiDimensionArrayType *Type::get_multi_array_type(Type *contained, std::vector<int> elements_array, unsigned dimension)
+{
+    return MultiDimensionArrayType::get(contained, elements_array, dimension);
+}
 
 PointerType *Type::get_int32_ptr_type(Module *m)
 {
@@ -150,6 +155,23 @@ std::string Type::print(){
         type_ir += static_cast<ArrayType *>(this)->get_element_type()->print();
         type_ir += "]";
         break;
+    /* modified */
+    case MultiArrayTyID:
+    {
+        auto dimension = static_cast<MultiDimensionArrayType *>(this)->get_num_of_dimension(); // get dimension
+        for(unsigned int i = 0; i < dimension; i++)
+        {
+            type_ir += "[";
+            type_ir += std::to_string( static_cast<MultiDimensionArrayType *>(this)->get_num_of_elements_by_dimension(i));
+            type_ir += " x ";
+        }
+        type_ir += static_cast<MultiDimensionArrayType *>(this)->get_element_type()->print();
+        for(unsigned int i = 0; i < dimension; i++)
+        {
+            type_ir += "]";
+        }
+        break;
+    }
     default:
         break;
     }
@@ -246,6 +268,25 @@ bool ArrayType::is_valid_element_type(Type *ty)
 ArrayType *ArrayType::get(Type *contained, unsigned num_elements)
 {
     return contained->get_module()->get_array_type(contained, num_elements);
+}
+/* Modified */
+MultiDimensionArrayType::MultiDimensionArrayType(Type *contained, std::vector<int> elements_array, unsigned dimension)
+    : Type(Type::MultiArrayTyID, contained->get_module()), elements_array(elements_array), dimension(dimension)
+{
+#ifdef DEBUG
+    assert(is_valid_element_type(contained) && "Not a valid type for array element!");
+#endif
+    contained_ = contained;
+}
+
+bool MultiDimensionArrayType::is_valid_element_type(Type *ty)
+{
+    return ty->is_integer_type()||ty->is_array_type()||ty->is_float_type()||ty->is_multi_array_type();
+}
+
+MultiDimensionArrayType *MultiDimensionArrayType::get(Type *contained, std::vector<int> element_array, unsigned dimension)
+{
+    return contained->get_module()->get_multi_array_type(contained, element_array, dimension);
 }
 
 PointerType::PointerType(Type *contained)

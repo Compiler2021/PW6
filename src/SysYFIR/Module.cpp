@@ -88,6 +88,16 @@ ArrayType *Module::get_array_type(Type *contained, unsigned num_elements)
     return array_map_[{contained, num_elements}];
 }
 
+/* Modified */
+MultiDimensionArrayType *Module::get_multi_array_type(Type *contained, std::vector<int> element_array, unsigned dimension)
+{
+    if( multi_array_map_.find({{contained, dimension},element_array}) == multi_array_map_.end() ) // bug may occur
+    {
+        multi_array_map_[{{contained,dimension},element_array}] = new MultiDimensionArrayType(contained, element_array, dimension);
+    }
+    return multi_array_map_[{{contained, dimension},element_array}];
+}
+
 PointerType *Module::get_int32_ptr_type()
 {
     return get_pointer_type(int32_ty_);

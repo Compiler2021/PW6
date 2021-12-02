@@ -28,7 +28,8 @@ public:
 
     PointerType *get_pointer_type(Type *contained);
     ArrayType *get_array_type(Type *contained, unsigned num_elements);
-
+    /* Modified */
+    MultiDimensionArrayType *get_multi_array_type(Type *contained, std::vector<int> element_array, unsigned dimension);
     void add_function(Function *f);
     std::list<Function* > &get_functions();
     void add_global_variable(GlobalVariable* g);
@@ -55,7 +56,8 @@ private:
     Type *void_ty_;    
     
     std::map<Type *, PointerType *> pointer_map_;
-    std::map<std::pair<Type *,int >, ArrayType *> array_map_; 
+    std::map<std::pair<Type *,int >, ArrayType *> array_map_; // store array?
+    std::map<std::pair<std::pair<Type *,int >, std::vector<int>>, MultiDimensionArrayType *> multi_array_map_; 
 };
 
 #endif // _SYSYF_MODULE_H_

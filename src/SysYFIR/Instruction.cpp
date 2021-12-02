@@ -515,9 +515,9 @@ std::string AllocaInst::print()
     instr_ir += "%";
     instr_ir += this->get_name();
     instr_ir += " = ";
-    instr_ir += this->get_module()->get_instr_op_name( this->get_instr_type() );
+    instr_ir += this->get_module()->get_instr_op_name( this->get_instr_type() ); // type should still be here
     instr_ir += " ";
-    instr_ir += get_alloca_type()->print();
+    instr_ir += get_alloca_type()->print(); // this is where [] should be counted
     return instr_ir;    
 }
 

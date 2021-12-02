@@ -176,7 +176,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             {
                 if(!const_expr.is_int && node.btype == SyntaxTree::Type::INT) // float init
                 {    
-                    auto Adjusted_Inital = ConstantFloat::get(const_expr.float_value, module.get());
+                    auto Adjusted_Inital = ConstantInt::get(int(const_expr.float_value), module.get());
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, Adjusted_Inital);
                     int val = (int)const_expr.float_value;
                     std::vector<int> init_vec;
@@ -187,7 +187,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 }
                 else if(const_expr.is_int && node.btype == SyntaxTree::Type::FLOAT)
                 {
-                    auto Adjusted_Inital = ConstantInt::get(const_expr.int_value, module.get());
+                    auto Adjusted_Inital = ConstantFloat::get(float(const_expr.int_value), module.get());
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, Adjusted_Inital);
                     float val = (float)const_expr.int_value;
                     std::vector<float> init_vec;
@@ -198,8 +198,18 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 }
                 else
                 {
-                    auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
-                    scope.push(node.name, global_init); // ok
+                    if(node.btype == SyntaxTree::Type::FLOAT)
+                    {
+                        auto Adjust_Inital = ConstantFloat::get(const_expr.float_value, module.get());
+                        auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, Adjust_Inital);
+                        scope.push(node.name, global_init); // ok
+                    }
+                    else
+                    {
+                        auto Adjust_Inital = ConstantInt::get(const_expr.int_value, module.get());
+                        auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, Adjust_Inital);
+                        scope.push(node.name, global_init); // ok
+                    }
                     if(node.is_constant == true)
                     {
                         if(const_expr.is_int)
@@ -286,20 +296,19 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             {
                 auto local_init = builder->create_alloca(Vartype);
                 scope.push(node.name, local_init);
-                if(!const_expr.is_int && node.btype == SyntaxTree::Type::INT) // float init
+                if(tmp_val->get_type()->is_float_type() && node.btype == SyntaxTree::Type::INT) // float init
                 {
-                    builder->create_store(CONST_INT(int(const_expr.float_value)), local_init);
+                    auto Adjusted_Inital = builder->create_fptosi(tmp_val, INT32_T);
+                    builder->create_store(Adjusted_Inital, local_init);
                 }
-                else if(const_expr.is_int && node.btype == SyntaxTree::Type::FLOAT)
+                else if(tmp_val->get_type()->is_integer_type() && node.btype == SyntaxTree::Type::FLOAT)
                 {
-                    builder->create_store(CONST_FLOAT((float)const_expr.int_value), local_init);
+                    auto Adjusted_Inital = builder->create_sitofp(tmp_val, FLOAT_T);
+                    builder->create_store(Adjusted_Inital, local_init);
                 }
                 else
                 {
-                    if(const_expr.is_int)
-                        builder->create_store(CONST_INT(const_expr.int_value), local_init);
-                    else
-                        builder->create_store(CONST_FLOAT(const_expr.float_value), local_init);
+                    builder->create_store(tmp_val, local_init);
                 }
             }
             else // array
@@ -483,7 +492,7 @@ void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
         return;
     }
     node.ret->accept(*this);
-    auto retType = this->module->get_functions().back()->get_function_type();
+    auto retType = this->module->get_functions().back()->get_return_type();   
     if (retType == FLOAT_T) {
         if (tmp_val->get_type() == INT32_T)
             tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
