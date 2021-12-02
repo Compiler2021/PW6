@@ -223,6 +223,20 @@ void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
     auto src = tmp_val; // 获取等号右边表达式的值
     node.target->accept(*this);
     auto dest = tmp_addr; // 获取左值
+    if (dest->get_type()->get_pointer_element_type() == FLOAT_T) {
+        if (src->get_type() == INT32_T)
+            src = this->builder->create_sitofp(src, FLOAT_T);
+        if (src->get_type() == INT1_T) {
+            src = this->builder->create_zext(src, INT32_T);
+            src = this->builder->create_sitofp(src, FLOAT_T);
+        }
+    } 
+    if (dest->get_type()->get_pointer_element_type() == INT32_T) {
+        if (src->get_type() == FLOAT_T)
+            src = this->builder->create_fptosi(src, INT32_T);
+        if (src->get_type() == INT1_T) 
+            src = this->builder->create_zext(src, INT32_T);
+    }
     this->builder->create_store(src, dest); // 存储值
     tmp_val = src; // 整个表达式的值就是等号右边的表达式的值
 }
@@ -241,6 +255,21 @@ void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
         return;
     }
     node.ret->accept(*this);
+    auto retType = this->module->get_functions().back()->get_function_type();
+    if (retType == FLOAT_T) {
+        if (tmp_val->get_type() == INT32_T)
+            tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+        if (tmp_val->get_type() == INT1_T) {
+            tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+            tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+        }
+    }
+    if (retType == INT32_T) {
+        if (tmp_val->get_type() == FLOAT_T)
+            tmp_val = this->builder->create_fptosi(tmp_val, INT32_T);
+        if (tmp_val->get_type() == INT1_T)
+            tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+    }
     this->builder->create_ret(tmp_val);
     tmp_val = nullptr; // return 语句没有值
 }
@@ -495,11 +524,28 @@ void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
 }
 
 void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {
-    auto ret = this->scope.find(node.name, true);
+    Function *ret = dynamic_cast<Function *>(this->scope.find(node.name, true));
     std::vector<Value *> params{}; // 实参集合
+    auto arg_begin = ret->arg_begin();
     for (const auto &expr : node.params) { // 对每个实参进行求值，并放到 params 中
         expr->accept(*this);
+        if ((*arg_begin)->get_type() == FLOAT_T) {
+            if (tmp_val->get_type() == INT32_T)
+                tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+            if (tmp_val->get_type() == INT1_T) {
+                tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+                tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+            }
+        }
+        if ((*arg_begin)->get_type() == INT32_T) {
+            if (tmp_val->get_type() == FLOAT_T)
+                tmp_val = this->builder->create_fptosi(tmp_val, INT32_T);
+            if (tmp_val->get_type() == INT1_T) {
+                tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+            }
+        }
         params.push_back(tmp_val);
+        arg_begin++;
     }
     tmp_val = this->builder->create_call(ret, std::move(params));
 }
@@ -509,12 +555,14 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     auto nextBB = BasicBlock::create(this->builder->get_module(), "IfNext" + std::to_string(label++), this->builder->get_module()->get_functions().back());
     if(node.else_statement==nullptr){
         node.cond_exp->accept(*this);
+        /*
         if(tmp_val->get_type()==INT32_T){
             tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
         }
         else if(tmp_val->get_type()==FLOAT_T){
             tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
         }
+        */
         this->builder->create_cond_br(tmp_val, trueBB, nextBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
@@ -524,12 +572,14 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     else{
         auto falseBB = BasicBlock::create(this->builder->get_module(), "IfFalse" + std::to_string(label++), this->builder->get_module()->get_functions().back());
         node.cond_exp->accept(*this);
+        /*
         if(tmp_val->get_type()==INT32_T){
             tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
         }
         else if(tmp_val->get_type()==FLOAT_T){
             tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
         }
+        */
         this->builder->create_cond_br(tmp_val, trueBB, falseBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
@@ -555,12 +605,14 @@ void IRBuilder::visit(SyntaxTree::WhileStmt &node) {
     this->builder->set_insert_point(condBB);
 
     node.cond_exp->accept(*this);
+    /*
     if (tmp_val->get_type() == INT32_T){
         tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
     }
     else if(tmp_val->get_type()==FLOAT_T){
         tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
     }
+    */
     this->builder->create_cond_br(tmp_val, trueBB, falseBB);
     this->builder->set_insert_point(trueBB);
     tmp_condbb.push_back(condBB);
