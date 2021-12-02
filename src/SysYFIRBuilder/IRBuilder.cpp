@@ -403,15 +403,44 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {
     auto ret = this->scope.find(node.name, false); // 根据名字获取值
+    if (ret == nullptr)
+        std::cout << node.name << std::endl;
     if (!node.array_index.empty()) {               // 如果是个数组
-        node.array_index[0]->accept(*this);        // 计算下标表达式的值
-        ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
-        tmp_addr = ret;
-        tmp_val = this->builder->create_load(tmp_addr);
+        if (scope.in_global()) {
+            auto index = const_expr;
+            const_expr.is_valid = true;
+            const_expr.is_int = ret->get_type()->get_pointer_element_type()->get_array_element_type() == INT32_T;
+            if (const_expr.is_int) {
+                auto get = const_int_var.find(node.name);
+                const_expr.int_value = get->second[index.int_value];
+            } else {
+                auto get = const_float_var.find(node.name);
+                const_expr.float_value = get->second[index.int_value];
+            }
+        } else {
+            node.array_index[0]->accept(*this);        // 计算下标表达式的值
+            ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
+            tmp_addr = ret;
+            tmp_val = this->builder->create_load(tmp_addr);
+            const_expr.is_valid = false;
+        }
         return;
     }
-    tmp_addr = ret;
-    tmp_val = this->builder->create_load(ret);
+    if (scope.in_global()) {
+        const_expr.is_valid = true;
+        const_expr.is_int = ret->get_type()->get_pointer_element_type() == INT32_T;
+        if (const_expr.is_int) {
+            auto get = const_int_var.find(node.name);
+            const_expr.int_value = get->second[0];
+        } else {
+            auto get = const_float_var.find(node.name);
+            const_expr.float_value = get->second[0];
+        }
+    } else {
+        tmp_addr = ret;
+        tmp_val = this->builder->create_load(ret);
+        const_expr.is_valid = false;
+    }
 }
 
 void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
