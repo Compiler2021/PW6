@@ -507,6 +507,7 @@ void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {
 void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     auto trueBB = BasicBlock::create(this->builder->get_module(), "IfTrue" + std::to_string(label++), this->builder->get_module()->get_functions().back());
     auto nextBB = BasicBlock::create(this->builder->get_module(), "IfNext" + std::to_string(label++), this->builder->get_module()->get_functions().back());
+
     if(node.else_statement==nullptr){
         node.cond_exp->accept(*this);
         if(tmp_val->get_type()==INT32_T){
@@ -518,7 +519,8 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
         this->builder->create_cond_br(tmp_val, trueBB, nextBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
-        this->builder->create_br(nextBB);
+        if (builder->get_insert_block()->get_terminator() == nullptr)
+            this->builder->create_br(nextBB);
         this->builder->set_insert_point(nextBB);
     }
     else{
@@ -533,11 +535,14 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
         this->builder->create_cond_br(tmp_val, trueBB, falseBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
-        this->builder->create_br(nextBB);
-        this->builder->set_insert_point(falseBB);
+        if (builder->get_insert_block()->get_terminator() == nullptr)
+            this->builder->create_br(nextBB);
 
+        this->builder->set_insert_point(falseBB);
         node.else_statement->accept(*this);
-        this->builder->create_br(nextBB);
+        if (builder->get_insert_block()->get_terminator() == nullptr)
+            this->builder->create_br(nextBB);
+
         this->builder->set_insert_point(nextBB);
     }
 }
