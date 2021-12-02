@@ -69,7 +69,7 @@ void IRBuilder::visit(SyntaxTree::InitVal &node)
         int i = 0;
         for (auto item : node.elementList)
         {
-            item->accept(*this);
+            item->accept(*this);    // tell this part if next level is Exp or not
             if(const_expr.is_int == true)
             {
                 array_inital.push_back((float)const_expr.int_value);
@@ -149,11 +149,12 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
     }
     auto zero_initializer = ConstantZero::get(Vartype, module.get());
     int count = 0;
-    //int DimensionLength = 0;
+    int DimensionLength = 0;
     for (auto length : node.array_length)
     {
         length->accept(*this);
         count++; // this is about dimension
+        DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
     }
     if (node.is_inited) 
     {
@@ -208,7 +209,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else    // array
             {
-                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 if(node.btype == SyntaxTree::Type::FLOAT)
                 {
@@ -291,7 +291,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else // array
             {
-                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 if(node.btype == SyntaxTree::Type::FLOAT)
@@ -360,7 +359,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else
             {
-                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
@@ -375,7 +373,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else
             {
-                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 scope.push(node.name, arrayLocal);
