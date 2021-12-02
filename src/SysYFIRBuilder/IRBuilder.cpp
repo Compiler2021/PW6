@@ -130,10 +130,12 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
     }
     auto zero_initializer = ConstantZero::get(Vartype, module.get());
     int count = 0;
+    int DimensionLength = 0;
     for (auto length : node.array_length)
     {
         length->accept(*this);
-        count++;
+        DimensionLength = dynamic_cast<ConstantInt*>(tmp_val)->get_value();
+        count++; // this is about dimension
     }
     if (node.is_inited) 
     {
@@ -143,13 +145,26 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
         {
             if (count == 0) // this is not an array
             {
-                auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
-                scope.push(node.name, global_init); // ok
+                if(tmp_val->get_type()->is_float_type() && node.btype == SyntaxTree::Type::INT) // float init
+                {
+                    auto Adjusted_Inital = builder->create_fptosi(tmp_val, INT32_T);
+                    auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(Adjusted_Inital));
+                }
+                else if(tmp_val->get_type()->is_integer_type() && node.btype == SyntaxTree::Type::FLOAT)
+                {
+                    auto Adjusted_Inital = builder->create_sitofp(tmp_val, FLOAT_T);
+                    auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(Adjusted_Inital));
+                }
+                else
+                {
+                    auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
+                    scope.push(node.name, global_init); // ok
+                }
             }
             else
             {
                 
-                auto *arrayType_global = ArrayType::get(Vartype, count);
+                auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
             }
@@ -160,17 +175,30 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             {
                 auto local_init = builder->create_alloca(Vartype);
                 scope.push(node.name, local_init);
-                builder->create_store(tmp_val, local_init);
+                if(tmp_val->get_type()->is_float_type() && node.btype == SyntaxTree::Type::INT) // float init
+                {
+                    auto Adjusted_Inital = builder->create_fptosi(tmp_val, INT32_T);
+                    builder->create_store(Adjusted_Inital, local_init);
+                }
+                else if(tmp_val->get_type()->is_integer_type() && node.btype == SyntaxTree::Type::FLOAT)
+                {
+                    auto Adjusted_Inital = builder->create_sitofp(tmp_val, FLOAT_T);
+                    builder->create_store(Adjusted_Inital, local_init);
+                }
+                else
+                {
+                    builder->create_store(tmp_val, local_init);
+                }
             }
             else
             {
-                auto *arrayType_local = ArrayType::get(Vartype, count);
+                auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 scope.push(node.name, arrayLocal);
             }
         }
     }
-    else
+    else // no need to check type
     {
         if (scope.in_global())
         {
@@ -182,7 +210,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             else
             {
                 
-                auto *arrayType_global = ArrayType::get(Vartype, count);
+                auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
             }
@@ -196,7 +224,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else
             {
-                auto *arrayType_local = ArrayType::get(Vartype, count);
+                auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 scope.push(node.name, arrayLocal);
             }
