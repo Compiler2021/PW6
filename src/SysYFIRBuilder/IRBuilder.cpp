@@ -22,7 +22,7 @@ Value *tmp_addr = nullptr; // 地址
 int label = 0;
 std::vector<BasicBlock*> tmp_condbb;
 std::vector<BasicBlock*> tmp_falsebb;
-
+std::vector<float> array_inital;            // for each dimension store the num 
 // 这里面保存了所有的全局的 const int 以及 const int 数组变量，std::string 是 它的名字，std::vector 里放它的值
 std::map<std::string, std::vector<int>> const_int_var;
 // 这里面保存了所有的全局的 const float 以及 const float 数组变量，std::string 是 它的名字，std::vector 里放它的值
@@ -67,11 +67,18 @@ void IRBuilder::visit(SyntaxTree::InitVal &node)
     else
     {
         int i = 0;
-        int num = node.elementList.size();
         for (auto item : node.elementList)
         {
             item->accept(*this);
-            i++; // store the number 
+            if(const_expr.is_int == true)
+            {
+                array_inital.push_back((float)const_expr.int_value);
+            }
+            else
+            {
+                array_inital.push_back(const_expr.float_value);
+            }
+            i++;
         } // we will wait to see if there needs more data pass
     }
     return;
@@ -142,11 +149,10 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
     }
     auto zero_initializer = ConstantZero::get(Vartype, module.get());
     int count = 0;
-    int DimensionLength = 0;
+    //int DimensionLength = 0;
     for (auto length : node.array_length)
     {
         length->accept(*this);
-        DimensionLength = dynamic_cast<ConstantInt*>(tmp_val)->get_value();
         count++; // this is about dimension
     }
     if (node.is_inited) 
@@ -158,30 +164,111 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             if (count == 0) // this is not an array
             {
                 if(tmp_val->get_type()->is_float_type() && node.btype == SyntaxTree::Type::INT) // float init
-                {
+                {    
                     auto Adjusted_Inital = builder->create_fptosi(tmp_val, INT32_T);
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(Adjusted_Inital));
+                    int val = (int)const_expr.float_value;
+                    std::vector<int> init_vec;
+                    init_vec.push_back(val);
+                    if(node.is_constant == true)
+                        const_int_var[node.name] = init_vec;
                 }
                 else if(tmp_val->get_type()->is_integer_type() && node.btype == SyntaxTree::Type::FLOAT)
                 {
                     auto Adjusted_Inital = builder->create_sitofp(tmp_val, FLOAT_T);
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(Adjusted_Inital));
+                    float val = (float)const_expr.int_value;
+                    std::vector<float> init_vec;
+                    init_vec.push_back(val);
+                    if(node.is_constant == true)
+                        const_float_var[node.name] = init_vec;
                 }
                 else
                 {
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, dynamic_cast<Constant*>(tmp_val));
                     scope.push(node.name, global_init); // ok
+                    if(node.is_constant == true)
+                    {
+                        if(const_expr.is_int)
+                        {
+                            int val = const_expr.int_value;
+                            std::vector<int> init_vec;
+                            init_vec.push_back(val);
+                            const_int_var[node.name] = init_vec;
+                        }
+                        else
+                        {
+                            float val = const_expr.float_value;
+                            std::vector<float> init_vec;
+                            init_vec.push_back(val);
+                            const_float_var[node.name] = init_vec;
+                        }
+                    }
                 }
             }
-            else
+            else    // array
             {
-                
+                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
-                auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
-                scope.push(node.name, arrayGlobal);
+                if(node.btype == SyntaxTree::Type::FLOAT)
+                {
+                    std::vector<Constant *> init_val;
+                    for(int i = 0; i < DimensionLength; i++)
+                    {
+                        if(i < array_inital.size()) // still have value
+                            init_val.push_back(CONST_FLOAT(array_inital[i])); // float array
+                        else
+                            init_val.push_back(CONST_FLOAT(0.0));
+                    }
+                    auto arrayInitializer = ConstantArray::get(arrayType_global, init_val);
+                    auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, arrayInitializer);
+                    scope.push(node.name, arrayGlobal);
+                }
+                else    // INT
+                {
+                    std::vector<Constant *> init_val;
+                    for(int i = 0; i < DimensionLength; i++)
+                    {
+                        if(i < array_inital.size()) // still have value
+                            init_val.push_back(CONST_INT((int)array_inital[i])); // float array
+                        else
+                            init_val.push_back(CONST_INT(0));
+                    }
+                    auto arrayInitializer = ConstantArray::get(arrayType_global, init_val);
+                    auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, arrayInitializer);
+                    scope.push(node.name, arrayGlobal);
+                }
+                if(node.is_constant == true)
+                {
+                    if(node.btype == SyntaxTree::Type::FLOAT)
+                    {
+                        std::vector<float> init_vec;
+                        for(int i = 0; i < DimensionLength; i++)
+                        {
+                            if(i < array_inital.size())
+                                init_vec.push_back(array_inital[i]);
+                            else
+                                init_vec.push_back(0.0);
+                            const_float_var[node.name] = init_vec;
+                        }
+                    }
+                    else
+                    {
+                        std::vector<int> init_vec;
+                        for(int i = 0; i < DimensionLength; i++)
+                        {
+                            if(i < array_inital.size())
+                                init_vec.push_back((int)array_inital[i]);
+                            else
+                                init_vec.push_back(0);
+                            const_int_var[node.name] = init_vec;
+                        }
+                    }
+                }
+                array_inital.clear(); // for next def
             }
         }
-        else
+        else // initialed not global
         {
             if (count == 0) // this is not an array
             {
@@ -202,11 +289,63 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                     builder->create_store(tmp_val, local_init);
                 }
             }
-            else
+            else // array
             {
+                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
-                scope.push(node.name, arrayLocal);
+                if(node.btype == SyntaxTree::Type::FLOAT)
+                {
+                    for(int i = 0; i < DimensionLength; i++)
+                    {
+                        if(i < array_inital.size()) // still have value
+                        {
+                            auto Gep = builder->create_gep(arrayLocal, {CONST_INT(0), CONST_INT(i)});
+                            builder->create_store(CONST_FLOAT(array_inital[i]), Gep);
+                        }
+                    }
+                    scope.push(node.name, arrayLocal);
+                }
+                else
+                {
+                    for(int i = 0; i < DimensionLength; i++)
+                    {
+                        if(i < array_inital.size()) // still have value
+                        {
+                            auto Gep = builder->create_gep(arrayLocal, {CONST_INT(0), CONST_INT(i)});
+                            builder->create_store(CONST_INT((int)array_inital[i]), Gep);
+                        }
+                    }
+                    scope.push(node.name, arrayLocal);
+                }
+                if(node.is_constant == true)    // const procedure
+                {
+                    if(node.btype == SyntaxTree::Type::FLOAT)
+                    {
+                        std::vector<float> init_vec;
+                        for(int i = 0; i < DimensionLength; i++)
+                        {
+                            if(i < array_inital.size())
+                                init_vec.push_back(array_inital[i]);
+                            else
+                                init_vec.push_back(0.0);
+                            const_float_var[node.name] = init_vec;
+                        }
+                    }
+                    else
+                    {
+                        std::vector<int> init_vec;
+                        for(int i = 0; i < DimensionLength; i++)
+                        {
+                            if(i < array_inital.size())
+                                init_vec.push_back((int)array_inital[i]);
+                            else
+                                init_vec.push_back(0);
+                            const_int_var[node.name] = init_vec;
+                        }
+                    }
+                }
+                array_inital.clear(); // for next def
             }
         }
     }
@@ -221,7 +360,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else
             {
-                
+                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
@@ -236,13 +375,13 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else
             {
+                int DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted
                 auto *arrayType_local = ArrayType::get(Vartype, DimensionLength);
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 scope.push(node.name, arrayLocal);
             }
         }
     }
-    
 }
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {
