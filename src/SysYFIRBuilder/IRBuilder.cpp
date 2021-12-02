@@ -9,12 +9,24 @@
 int is_global = 0; // at first it is global
 // to store state
 
+struct ConstExpr {
+    bool is_valid; // 为真代表表达式确实是个可计算的常值
+    bool is_int; // 为真代表表达式计算结果是个 int 
+    int int_value; // 当 is_int 为真时此成员有效
+    float float_value; // 当 is_int 为假时此成员有效
+} const_expr{false, false, 0, 0.0};
+
 // store temporary value
 Value *tmp_val = nullptr;
 Value *tmp_addr = nullptr; // 地址
 int label = 0;
 std::vector<BasicBlock*> tmp_condbb;
 std::vector<BasicBlock*> tmp_falsebb;
+
+// 这里面保存了所有的全局的 const int 以及 const int 数组变量，std::string 是 它的名字，std::vector 里放它的值
+std::map<std::string, std::vector<int>> const_int_var;
+// 这里面保存了所有的全局的 const float 以及 const float 数组变量，std::string 是 它的名字，std::vector 里放它的值
+std::map<std::string, std::vector<float>> const_float_var;
 
 // types
 Type *VOID_T;
@@ -251,15 +263,32 @@ void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
     auto src = tmp_val; // 获取等号右边表达式的值
     node.target->accept(*this);
     auto dest = tmp_addr; // 获取左值
+    if (dest->get_type()->get_pointer_element_type() == FLOAT_T) {
+        if (src->get_type() == INT32_T)
+            src = this->builder->create_sitofp(src, FLOAT_T);
+        if (src->get_type() == INT1_T) {
+            src = this->builder->create_zext(src, INT32_T);
+            src = this->builder->create_sitofp(src, FLOAT_T);
+        }
+    } 
+    if (dest->get_type()->get_pointer_element_type() == INT32_T) {
+        if (src->get_type() == FLOAT_T)
+            src = this->builder->create_fptosi(src, INT32_T);
+        if (src->get_type() == INT1_T) 
+            src = this->builder->create_zext(src, INT32_T);
+    }
     this->builder->create_store(src, dest); // 存储值
     tmp_val = src; // 整个表达式的值就是等号右边的表达式的值
 }
 
 void IRBuilder::visit(SyntaxTree::Literal &node) {
-    if (node.literal_type == SyntaxTree::Type::INT) // 字面量是个整形
+    if (node.literal_type == SyntaxTree::Type::INT) { // 字面量是个整形
         tmp_val = CONST_INT(node.int_const);
-    else // 字面量是个浮点数
+        const_expr = {true, true, node.int_const, 0.0};
+    } else {// 字面量是个浮点数
         tmp_val = CONST_FLOAT(node.float_const);
+        const_expr = {true, false, 0, (float)node.float_const};
+    }
 }
 
 void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
@@ -269,6 +298,21 @@ void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
         return;
     }
     node.ret->accept(*this);
+    auto retType = this->module->get_functions().back()->get_function_type();
+    if (retType == FLOAT_T) {
+        if (tmp_val->get_type() == INT32_T)
+            tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+        if (tmp_val->get_type() == INT1_T) {
+            tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+            tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+        }
+    }
+    if (retType == INT32_T) {
+        if (tmp_val->get_type() == FLOAT_T)
+            tmp_val = this->builder->create_fptosi(tmp_val, INT32_T);
+        if (tmp_val->get_type() == INT1_T)
+            tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+    }
     this->builder->create_ret(tmp_val);
     tmp_val = nullptr; // return 语句没有值
 }
@@ -294,16 +338,26 @@ void IRBuilder::visit(SyntaxTree::ExprStmt &node) {
 void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {
     node.rhs->accept(*this);
     auto rhs = tmp_val;
-    if (tmp_val->get_type()->is_float_type())
+    if (tmp_val->get_type()->is_float_type()) 
         tmp_val = this->builder->create_fcmp_eq(rhs, CONST_FLOAT(0));
     else 
         tmp_val = this->builder->create_fcmp_eq(rhs, CONST_INT(0));
     // 如果 rhs 为 0，那 tmp_val = 1 否则 tmp_val = 0
+    if (const_expr.is_valid) {
+        if (const_expr.is_int)
+            const_expr.int_value = const_expr.int_value == 0;
+        else {
+            const_expr.is_int = true;
+            const_expr.int_value = const_expr.float_value == 0.0;
+        }
+    }
 }
 
 void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
     if (node.op == SyntaxTree::BinaryCondOp::LOR) {
         node.lhs->accept(*this);
+        auto lhs_const = const_expr;
+        const_expr.is_valid = false;
 
         auto if_true = BasicBlock::create( // 短路计算
                 this->module.get(),
@@ -327,6 +381,7 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         this->builder->set_insert_point(if_false);
 
         node.rhs->accept(*this);
+        auto rhs_const = const_expr;
         if (tmp_val->get_type()->is_float_type())
             tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
         else 
@@ -341,10 +396,26 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         this->builder->set_insert_point(if_true); // 左式为真，启动短路计算
         ret = this->builder->create_load(retAlloca);
         tmp_val = this->builder->create_icmp_gt(ret, CONST_INT(0)); // 只要结果不是 0 就代表有一个为 1
+
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            lhs_const.int_value = lhs_const.is_int
+                ? lhs_const.int_value != 0
+                : lhs_const.float_value != 0.0;
+            rhs_const.int_value = rhs_const.is_int
+                ? rhs_const.int_value != 0
+                : rhs_const.float_value != 0.0;
+            const_expr.int_value = lhs_const.int_value || rhs_const.int_value;
+        } else {
+            const_expr.is_valid = false;
+        }
         return;
     }
     if (node.op == SyntaxTree::BinaryCondOp::LAND) {
         node.lhs->accept(*this);
+        auto lhs_const = const_expr;
+        const_expr.is_valid = false;
 
         auto if_true = BasicBlock::create( // 短路计算
                 this->module.get(),
@@ -368,6 +439,7 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         this->builder->set_insert_point(if_true);
 
         node.rhs->accept(*this);
+        auto rhs_const = const_expr;
         if (tmp_val->get_type()->is_float_type())
             tmp_val = this->builder->create_fcmp_ne(tmp_val, CONST_FLOAT(0.0));
         else
@@ -381,13 +453,30 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         this->builder->set_insert_point(if_false); // 左式为假，启动短路计算
         ret = this->builder->create_load(retAlloca);
         tmp_val = this->builder->create_icmp_eq(ret, CONST_INT(2)); // 只要结果等于 2 那就是真
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            lhs_const.int_value = lhs_const.is_int
+                ? lhs_const.int_value != 0
+                : lhs_const.float_value != 0.0;
+            rhs_const.int_value = rhs_const.is_int
+                ? rhs_const.int_value != 0
+                : rhs_const.float_value != 0.0;
+            const_expr.int_value = lhs_const.int_value && rhs_const.int_value;
+        } else {
+            const_expr.is_valid = false;
+        }
         return;
     }
     
     node.lhs->accept(*this);
     auto lhs = tmp_val;
+    auto lhs_const = const_expr;
+    const_expr.is_valid = false;
     node.rhs->accept(*this);
     auto rhs = tmp_val;
+    auto rhs_const = const_expr;
+
     if (node.op == SyntaxTree::BinaryCondOp::EQ) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -398,6 +487,21 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             tmp_val = this->builder->create_fcmp_eq(lhs, rhs);
         } else {
             tmp_val = this->builder->create_icmp_eq(lhs, rhs);
+        }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value == rhs_const.int_value
+                    : lhs_const.int_value == rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value == rhs_const.int_value
+                    : lhs_const.float_value == rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinaryCondOp::GT) { // 以下基本重复，应该可以使用函数指针优化
         if (lhs->get_type()->is_float_type()) {
@@ -410,6 +514,21 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         } else {
             tmp_val = this->builder->create_icmp_gt(lhs, rhs);
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value > rhs_const.int_value
+                    : lhs_const.int_value > rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value > rhs_const.int_value
+                    : lhs_const.float_value > rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     } else if (node.op == SyntaxTree::BinaryCondOp::GTE) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -420,6 +539,21 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             tmp_val = this->builder->create_fcmp_ge(lhs, rhs);
         } else {
             tmp_val = this->builder->create_icmp_ge(lhs, rhs);
+        }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value >= rhs_const.int_value
+                    : lhs_const.int_value >= rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value >= rhs_const.int_value
+                    : lhs_const.float_value >= rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinaryCondOp::NEQ) {
         if (lhs->get_type()->is_float_type()) {
@@ -432,6 +566,21 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         } else {
             tmp_val = this->builder->create_icmp_ne(lhs, rhs);
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value != rhs_const.int_value
+                    : lhs_const.int_value != rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value != rhs_const.int_value
+                    : lhs_const.float_value != rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     } else if (node.op == SyntaxTree::BinaryCondOp::LT) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -442,6 +591,21 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             tmp_val = this->builder->create_fcmp_lt(lhs, rhs);
         } else {
             tmp_val = this->builder->create_icmp_lt(lhs, rhs);
+        }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value < rhs_const.int_value
+                    : lhs_const.int_value < rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value < rhs_const.int_value
+                    : lhs_const.float_value < rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinaryCondOp::LTE) {
         if (lhs->get_type()->is_float_type()) {
@@ -454,14 +618,33 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         } else {
             tmp_val = this->builder->create_icmp_le(lhs, rhs);
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            if (lhs_const.is_int) {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.int_value <= rhs_const.int_value
+                    : lhs_const.int_value <= rhs_const.float_value;
+            } else {
+                const_expr.int_value = rhs_const.is_int
+                    ? lhs_const.float_value <= rhs_const.int_value
+                    : lhs_const.float_value <= rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     }
 }
 
 void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
     node.lhs->accept(*this);
     auto lhs = tmp_val;
+    auto lhs_const = const_expr;
+    const_expr.is_valid = false;
     node.rhs->accept(*this);
     auto rhs = tmp_val;
+    auto rhs_const = const_expr;
+
     if (node.op == SyntaxTree::BinOp::PLUS) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -473,6 +656,25 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
         } else {
             tmp_val = this->builder->create_iadd(lhs, rhs);
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            if (lhs_const.is_int) {
+                if (rhs_const.is_int) {
+                    const_expr.is_int = true;
+                    const_expr.int_value = lhs_const.int_value + rhs_const.int_value;
+                } else {
+                    const_expr.is_int = false;
+                    const_expr.float_value = lhs_const.int_value + rhs_const.float_value;
+                }
+            } else {
+                const_expr.is_int = false;
+                const_expr.float_value = rhs_const.is_int
+                    ? lhs_const.float_value + rhs_const.int_value
+                    : lhs_const.float_value + rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     } else if (node.op == SyntaxTree::BinOp::MINUS) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -483,6 +685,25 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
             tmp_val = this->builder->create_fsub(lhs, rhs);
         } else {
             tmp_val = this->builder->create_isub(lhs, rhs);
+        }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            if (lhs_const.is_int) {
+                if (rhs_const.is_int) {
+                    const_expr.is_int = true;
+                    const_expr.int_value = lhs_const.int_value - rhs_const.int_value;
+                } else {
+                    const_expr.is_int = false;
+                    const_expr.float_value = lhs_const.int_value - rhs_const.float_value;
+                }
+            } else {
+                const_expr.is_int = false;
+                const_expr.float_value = rhs_const.is_int
+                    ? lhs_const.float_value - rhs_const.int_value
+                    : lhs_const.float_value - rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
         }
     } else if (node.op == SyntaxTree::BinOp::MULTIPLY) {
         if (lhs->get_type()->is_float_type()) {
@@ -496,6 +717,25 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
             tmp_val = builder->create_imul(lhs, rhs);
             /*tmp_val = dynamic_cast<Value *>(temp);*/  // Critical Problem! it will create mul i32*, which should not exist; 
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            if (lhs_const.is_int) {
+                if (rhs_const.is_int) {
+                    const_expr.is_int = true;
+                    const_expr.int_value = lhs_const.int_value * rhs_const.int_value;
+                } else {
+                    const_expr.is_int = false;
+                    const_expr.float_value = lhs_const.int_value * rhs_const.float_value;
+                }
+            } else {
+                const_expr.is_int = false;
+                const_expr.float_value = rhs_const.is_int
+                    ? lhs_const.float_value * rhs_const.int_value
+                    : lhs_const.float_value * rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     } else if (node.op == SyntaxTree::BinOp::DIVIDE) {
         if (lhs->get_type()->is_float_type()) {
             if (rhs->get_type()->is_integer_type())
@@ -507,8 +747,34 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
         } else {
             tmp_val = this->builder->create_isdiv(lhs, rhs);
         }
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            if (lhs_const.is_int) {
+                if (rhs_const.is_int) {
+                    const_expr.is_int = true;
+                    const_expr.int_value = lhs_const.int_value / rhs_const.int_value;
+                } else {
+                    const_expr.is_int = false;
+                    const_expr.float_value = lhs_const.int_value / rhs_const.float_value;
+                }
+            } else {
+                const_expr.is_int = false;
+                const_expr.float_value = rhs_const.is_int
+                    ? lhs_const.float_value / rhs_const.int_value
+                    : lhs_const.float_value / rhs_const.float_value;
+            }
+        } else {
+            const_expr.is_valid = false;
+        }
     } else if (node.op == SyntaxTree::BinOp::MODULO) {
         tmp_val = this->builder->create_isrem(lhs, rhs);
+        if (lhs_const.is_valid && rhs_const.is_valid) {
+            const_expr.is_valid = true;
+            const_expr.is_int = true;
+            const_expr.int_value = lhs_const.int_value % rhs_const.int_value;
+        } else {
+            const_expr.is_valid = false;
+        }
     }
 }
 
@@ -519,15 +785,38 @@ void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
             tmp_val = this->builder->create_fsub(CONST_FLOAT(0.0), tmp_val);
         else 
             tmp_val = this->builder->create_isub(CONST_INT(0), tmp_val);
+        if (const_expr.is_valid) {
+            if (const_expr.is_int)
+                const_expr.int_value = -const_expr.int_value;
+            else 
+                const_expr.float_value = -const_expr.float_value; 
+        }
     }
 }
 
 void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {
-    auto ret = this->scope.find(node.name, true);
+    Function *ret = dynamic_cast<Function *>(this->scope.find(node.name, true));
     std::vector<Value *> params{}; // 实参集合
+    auto arg_begin = ret->arg_begin();
     for (const auto &expr : node.params) { // 对每个实参进行求值，并放到 params 中
         expr->accept(*this);
+        if ((*arg_begin)->get_type() == FLOAT_T) {
+            if (tmp_val->get_type() == INT32_T)
+                tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+            if (tmp_val->get_type() == INT1_T) {
+                tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+                tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
+            }
+        }
+        if ((*arg_begin)->get_type() == INT32_T) {
+            if (tmp_val->get_type() == FLOAT_T)
+                tmp_val = this->builder->create_fptosi(tmp_val, INT32_T);
+            if (tmp_val->get_type() == INT1_T) {
+                tmp_val = this->builder->create_zext(tmp_val, INT32_T);
+            }
+        }
         params.push_back(tmp_val);
+        arg_begin++;
     }
     tmp_val = this->builder->create_call(ret, std::move(params));
 }
@@ -537,12 +826,14 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     auto nextBB = BasicBlock::create(this->builder->get_module(), "IfNext" + std::to_string(label++), this->builder->get_module()->get_functions().back());
     if(node.else_statement==nullptr){
         node.cond_exp->accept(*this);
+        /*
         if(tmp_val->get_type()==INT32_T){
             tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
         }
         else if(tmp_val->get_type()==FLOAT_T){
             tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
         }
+        */
         this->builder->create_cond_br(tmp_val, trueBB, nextBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
@@ -552,12 +843,14 @@ void IRBuilder::visit(SyntaxTree::IfStmt &node) {
     else{
         auto falseBB = BasicBlock::create(this->builder->get_module(), "IfFalse" + std::to_string(label++), this->builder->get_module()->get_functions().back());
         node.cond_exp->accept(*this);
+        /*
         if(tmp_val->get_type()==INT32_T){
             tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
         }
         else if(tmp_val->get_type()==FLOAT_T){
             tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
         }
+        */
         this->builder->create_cond_br(tmp_val, trueBB, falseBB);
         this->builder->set_insert_point(trueBB);
         node.if_statement->accept(*this);
@@ -583,12 +876,14 @@ void IRBuilder::visit(SyntaxTree::WhileStmt &node) {
     this->builder->set_insert_point(condBB);
 
     node.cond_exp->accept(*this);
+    /*
     if (tmp_val->get_type() == INT32_T){
         tmp_val = builder->create_icmp_ne(tmp_val,CONST_INT(0));
     }
     else if(tmp_val->get_type()==FLOAT_T){
         tmp_val = builder->create_fcmp_ne(tmp_val,CONST_FLOAT(0));
     }
+    */
     this->builder->create_cond_br(tmp_val, trueBB, falseBB);
     this->builder->set_insert_point(trueBB);
     tmp_condbb.push_back(condBB);
