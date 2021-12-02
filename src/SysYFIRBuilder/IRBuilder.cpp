@@ -103,6 +103,14 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
             break;
         }
     }
+    if (builder->get_insert_block()->get_terminator() == nullptr){
+        if (node.ret_type == SyntaxTree::Type::VOID)
+            builder->create_void_ret();
+        else if (node.ret_type == SyntaxTree::Type::FLOAT)
+            builder->create_ret(CONST_FLOAT(0.));
+        else
+            builder->create_ret(CONST_INT(0));
+    }
     scope.exit();
     is_global--;
 }
