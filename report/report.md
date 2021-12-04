@@ -67,6 +67,54 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ## 实验设计
 
+### InitVal
+
+​	如果当前InitVal是Expr类型，则直接访问。如果当前InitVal是InitVal嵌套类型，则记录嵌套深度initval_depth++，遍历node.elementList。如果常值表达式const_expr是int类型，则将其值转换成float类型存入array_inital；如果是float类型，则直接存入array_inital。
+
+### FuncDef
+
+​	遍历参数表中的每个参数，如果参数是指针类型，则调用PointerType::get获取指针类型存入参数类型数组params；如果参数不是指针类型，则直接从TypeMap中读入类型信息存入参数类型数组params。
+
+​	根据函数参数类型数组和函数返回类型建立函数类型，根据函数类型和函数名建立函数，将函数加入符号表，建立函数基本块。进入作用域，访问函数的参数表param_list，遍历函数体body，如果遇到ReturnStmt则不编译其后面语句，如果函数没有终止指令，则给函数增加一条返回语句，退出作用域。
+
+### FuncFParamList
+
+​	当前的函数是函数表中最后一个函数，由此获取函数参数值表，遍历函数形参表，判断参数是不是指针类型并相应地获取类型分配空间存入参数的值。
+
+### FuncParam
+
+​	遍历参数的数组维度列表，如果表达式Expr不空，则进行访问。
+
+### EmptyStmt
+
+​	不用处理
+
+### ExprStmt
+
+​	直接进行访问
+
+### FuncCallStmt
+
+​	通过函数名在符号表中找到函数，对每个形参类型进行分类为int，float，pointer，并相应求值，将结果放到实参集合 params 中。调用create_call调用函数，并将实参集合传递给形参表。
+
+### IfStmt
+
+​	如果没有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到nextBB基本块。建立trueBB断点，访问if_statement，跳转到nextBB；建立nextBB断点。
+
+​	如果有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到falseBB基本块。建立trueBB断点，访问if_statement，如果if_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB；如果if_statement的最后语句是终止指令则去除nextBB。建立falseBB断点，访问else_statement，如果else_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB。建立nextBB断点。
+
+### WhileStmt
+
+​	强制跳转到condBB，建立condBB断点，访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到falseBB基本块。建立trueBB断点，将当前condBB和falseBB分别存入tmp_condbb和tmp_falsebb(方便BreakStmt和ContinueStmt)，访问循环体statement，跳转到condBB，建立falseBB断点。最后tmp_condbb和tmp_falsebb栈顶出栈以清除已退出循环的condBB或falseBB。
+
+### BreakStmt
+
+​	跳转到tmp_falsebb栈顶基本块。
+
+### ContinueStmt
+
+​	跳转到tmp_condbb栈顶基本块。
+
 ## 实验难点及解决方案
 
 ## 实验总结
@@ -74,5 +122,3 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 ## 实验反馈
 
 ## 组间交流
-
-
