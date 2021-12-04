@@ -370,7 +370,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
         }
     }
-    else // no need to check type
+    else // no need to check type // not initialed
     {
         if (scope.in_global())
         {
@@ -379,11 +379,17 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, zero_initializer);
                 scope.push(node.name, global_init);
             }
-            else
+            else if(count == 1)
             {
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
+            }
+            else
+            {
+                auto *multiArrayType_global = MultiDimensionArrayType::get(Vartype, dimension_vec, count);
+                auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, false, zero_initializer);
+                scope.push(node.name, multiArrayGlobal);
             }
         }
         else
@@ -402,8 +408,8 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             else // MultiDimension 
             { // need change
                 //std::cout<<"I'm here\n";
-                auto *MultiarrayType_local = MultiDimensionArrayType::get(Vartype, dimension_vec, count);
-                auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
+                auto *multiArrayType_local = MultiDimensionArrayType::get(Vartype, dimension_vec, count);
+                auto multiArrayLocal = builder->create_alloca(multiArrayType_local);
                 scope.push(node.name, multiArrayLocal);
             }
         }
