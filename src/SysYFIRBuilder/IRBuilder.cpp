@@ -14,7 +14,7 @@ std::vector<std::vector<int>> dimension_length_vec; // store inital value
 
 struct ConstExpr {
     bool is_valid; // 为真代表表达式确实是个可计算的常值
-    bool is_int; // 为真代表表达式计算结果是个 int 
+    bool is_int; // 为真代表表达式计算结果是个 int
     int int_value; // 当 is_int 为真时此成员有效
     float float_value; // 当 is_int 为假时此成员有效
 } const_expr{false, false, 0, 0.0};
@@ -25,7 +25,7 @@ Value *tmp_addr = nullptr; // 地址
 int label = 0;
 std::vector<BasicBlock*> tmp_condbb;
 std::vector<BasicBlock*> tmp_falsebb;
-std::vector<float> array_inital;            // for each dimension store the num 
+std::vector<float> array_inital;            // for each dimension store the num
 // 这里面保存了所有的全局的 const int 以及 const int 数组变量，std::string 是 它的名字，std::vector 里放它的值
 std::map<std::string, std::vector<int>> const_int_var;
 // 这里面保存了所有的全局的 const float 以及 const float 数组变量，std::string 是 它的名字，std::vector 里放它的值
@@ -65,7 +65,7 @@ void IRBuilder::visit(SyntaxTree::InitVal &node)
     if (node.isExp)
     {
         node.expr->accept(*this); // inside expr, this would help get value
-                                  // VarDef hold the place for alloca
+        // VarDef hold the place for alloca
     }
     else
     {
@@ -90,11 +90,19 @@ void IRBuilder::visit(SyntaxTree::InitVal &node)
 
 void IRBuilder::visit(SyntaxTree::FuncDef &node) {
     std::vector<Type *> params;
+    int count = 0;
     for(const auto &param : node.param_list->params){
         if (param->array_index.empty())
             params.push_back(TypeMap[param->param_type]);
-        else 
-            params.push_back(PointerType::get(TypeMap[param->param_type]));
+        else{
+            for(auto expr:param->array_index)
+                count++;
+            if(count == 1)
+                params.push_back(PointerType::get(TypeMap[param->param_type]));
+            else
+                params.push_back(MultiDimensionArrayType::get(TypeMap[param->param_type], dimension_vec, count));
+        }
+
     }
     auto FuncType = FunctionType::get(TypeMap[node.ret_type], params);
     auto Func = Function::create(FuncType, node.name, builder->get_module());
@@ -121,20 +129,38 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
 }
 
 void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
+    int count = 0;
     auto Argument = builder->get_module()->get_functions().back()->arg_begin();//当前的函数应该是函数表中最后一个函数
     for (const auto &param : node.params){
         param->accept(*this);                                               //访问参数
-        if(!param->array_index.empty()) {
-            auto paramAlloc = 
-                param->param_type == SyntaxTree::Type::FLOAT
-                ? builder->create_alloca(FLOATPTR_T)
-                : builder->create_alloca(INT32PTR_T);
-            builder->create_store(*Argument, paramAlloc);                            //存参数的值
-            scope.push(param->name, paramAlloc);                              //加入符号表
-        } else {
+        if(param->array_index.empty()) {
             auto paramAlloc = builder->create_alloca(TypeMap[param->param_type]);     //分配空间
             builder->create_store(*Argument, paramAlloc);                            //存参数的值
             scope.push(param->name, paramAlloc);                              //加入符号表
+
+        } else {
+            for(auto expr:param->array_index)
+                count++;
+            if(count == 1){
+                auto paramAlloc =
+                        param->param_type == SyntaxTree::Type::FLOAT
+                        ? builder->create_alloca(FLOATPTR_T)
+                        : builder->create_alloca(INT32PTR_T);
+                builder->create_store(*Argument, paramAlloc);                            //存参数的值
+                scope.push(param->name, paramAlloc);                              //加入符号表
+            }
+            else if(param->param_type == SyntaxTree::Type::FLOAT){
+                auto *MultiarrayType_local = MultiDimensionArrayType::get(TypeMap[SyntaxTree::Type::FLOAT], dimension_vec, count);
+                auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
+                builder->create_store(*Argument, multiArrayLocal);
+                scope.push(param->name, multiArrayLocal);
+            }
+            else{
+                auto *MultiarrayType_local = MultiDimensionArrayType::get(TypeMap[SyntaxTree::Type::INT], dimension_vec, count);
+                auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
+                builder->create_store(*Argument, multiArrayLocal);
+                scope.push(param->name, multiArrayLocal);
+            }
         }
         Argument++;                                                             //下一个参数值
     }
@@ -144,6 +170,7 @@ void IRBuilder::visit(SyntaxTree::FuncParam &node) {
     for(auto Exp:node.array_index){                                             //遍历每个Expr
         if (Exp != nullptr){
             Exp->accept(*this);
+            dimension_vec.push_back(const_expr.int_value);
         }
     }
 }
@@ -169,9 +196,9 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
         count++; // this is about dimension
         DimensionLength = const_expr.int_value; // no checking here a[float] was not permitted // for one dimension array
         dimension_vec.push_back(const_expr.int_value);
-        
+
     }
-    if (node.is_inited) 
+    if (node.is_inited)
     {
         node.initializers->accept(*this);
         if (scope.in_global())
@@ -179,7 +206,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             if (count == 0) // this is not an array
             {
                 if(!const_expr.is_int && node.btype == SyntaxTree::Type::INT) // float init
-                {    
+                {
                     auto Adjusted_Inital = ConstantInt::get(int(const_expr.float_value), module.get());
                     auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, Adjusted_Inital);
                     int val = (int)const_expr.float_value;
@@ -378,7 +405,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 auto global_init = GlobalVariable::create(node.name, module.get(), Vartype, false, zero_initializer);
                 if (global_init->get_type()->get_pointer_element_type() == INT32_T)
                     const_int_var[node.name] = std::vector<int>{0};
-                else 
+                else
                     const_float_var[node.name] = std::vector<float>{0.0};
                 scope.push(node.name, global_init);
             }
@@ -387,7 +414,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 auto *arrayType_global = ArrayType::get(Vartype, DimensionLength);
                 if (arrayType_global->get_array_element_type() == INT32_T)
                     const_int_var[node.name] = std::vector<int>(DimensionLength, 0);
-                else 
+                else
                     const_float_var[node.name] = std::vector<float>(DimensionLength, 0.0);
                 auto arrayGlobal = GlobalVariable::create(node.name, module.get(), arrayType_global, false, zero_initializer);
                 scope.push(node.name, arrayGlobal);
@@ -406,7 +433,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                 auto arrayLocal = builder->create_alloca(arrayType_local);
                 scope.push(node.name, arrayLocal);
             }
-            else // MultiDimension 
+            else // MultiDimension
             { // need change
                 //std::cout<<"I'm here\n";
                 auto *MultiarrayType_local = MultiDimensionArrayType::get(Vartype, dimension_vec, count);
@@ -433,12 +460,12 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
                 const_expr.float_value = get->second[index.int_value];
             }
         } else {
-            if (ret->get_type()->get_pointer_element_type()->is_pointer_type()) { 
+            if (ret->get_type()->get_pointer_element_type()->is_pointer_type()) {
                 ret = this->builder->create_gep(ret, {CONST_INT(0)});
                 ret = this->builder->create_load(ret);
                 ret = this->builder->create_gep(ret, {tmp_val});
             }
-            else 
+            else
                 ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
             tmp_addr = ret;
             tmp_val = this->builder->create_load(tmp_addr);
@@ -484,11 +511,11 @@ void IRBuilder::visit(SyntaxTree::AssignStmt &node) {
             src = this->builder->create_zext(src, INT32_T);
             src = this->builder->create_sitofp(src, FLOAT_T);
         }
-    } 
+    }
     if (dest->get_type()->get_pointer_element_type() == INT32_T) {
         if (src->get_type() == FLOAT_T)
             src = this->builder->create_fptosi(src, INT32_T);
-        if (src->get_type() == INT1_T) 
+        if (src->get_type() == INT1_T)
             src = this->builder->create_zext(src, INT32_T);
     }
     this->builder->create_store(src, dest); // 存储值
@@ -506,13 +533,13 @@ void IRBuilder::visit(SyntaxTree::Literal &node) {
 }
 
 void IRBuilder::visit(SyntaxTree::ReturnStmt &node) {
-    if (node.ret.get() == nullptr) { // 返回值为 void 
+    if (node.ret.get() == nullptr) { // 返回值为 void
         this->builder->create_void_ret();
         tmp_val = nullptr;
         return;
     }
     node.ret->accept(*this);
-    auto retType = this->module->get_functions().back()->get_return_type();   
+    auto retType = this->module->get_functions().back()->get_return_type();
     if (retType == FLOAT_T) {
         if (tmp_val->get_type() == INT32_T)
             tmp_val = this->builder->create_sitofp(tmp_val, FLOAT_T);
@@ -562,7 +589,7 @@ void IRBuilder::visit(SyntaxTree::UnaryCondExpr &node) {
         }
     } else {
         auto rhs = tmp_val;
-        if (tmp_val->get_type()->is_float_type()) 
+        if (tmp_val->get_type()->is_float_type())
             tmp_val = this->builder->create_fcmp_eq(rhs, CONST_FLOAT(0));
         else {
             if (tmp_val->get_type() == INT1_T)
@@ -619,7 +646,7 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
         tmp_val = this->builder->create_iadd(ret, tmp_val); // 把两个逻辑表达式的结果加在一起
         this->builder->create_store(tmp_val, retAlloca);    // 结果存到 retAlloca
         this->builder->create_br(if_true);
-        
+
         this->builder->set_insert_point(if_true); // 左式为真，启动短路计算
         ret = this->builder->create_load(retAlloca);
         tmp_val = this->builder->create_icmp_gt(ret, CONST_INT(0)); // 只要结果不是 0 就代表有一个为 1
@@ -628,11 +655,11 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_valid = true;
             const_expr.is_int = true;
             lhs_const.int_value = lhs_const.is_int
-                ? lhs_const.int_value != 0
-                : lhs_const.float_value != 0.0;
+                                  ? lhs_const.int_value != 0
+                                  : lhs_const.float_value != 0.0;
             rhs_const.int_value = rhs_const.is_int
-                ? rhs_const.int_value != 0
-                : rhs_const.float_value != 0.0;
+                                  ? rhs_const.int_value != 0
+                                  : rhs_const.float_value != 0.0;
             const_expr.int_value = lhs_const.int_value || rhs_const.int_value;
         } else {
             const_expr.is_valid = false;
@@ -690,18 +717,18 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_valid = true;
             const_expr.is_int = true;
             lhs_const.int_value = lhs_const.is_int
-                ? lhs_const.int_value != 0
-                : lhs_const.float_value != 0.0;
+                                  ? lhs_const.int_value != 0
+                                  : lhs_const.float_value != 0.0;
             rhs_const.int_value = rhs_const.is_int
-                ? rhs_const.int_value != 0
-                : rhs_const.float_value != 0.0;
+                                  ? rhs_const.int_value != 0
+                                  : rhs_const.float_value != 0.0;
             const_expr.int_value = lhs_const.int_value && rhs_const.int_value;
         } else {
             const_expr.is_valid = false;
         }
         return;
     }
-    
+
     node.lhs->accept(*this);
     auto lhs = tmp_val;
     auto lhs_const = const_expr;
@@ -726,12 +753,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value == rhs_const.int_value
-                    : lhs_const.int_value == rhs_const.float_value;
+                                       ? lhs_const.int_value == rhs_const.int_value
+                                       : lhs_const.int_value == rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value == rhs_const.int_value
-                    : lhs_const.float_value == rhs_const.float_value;
+                                       ? lhs_const.float_value == rhs_const.int_value
+                                       : lhs_const.float_value == rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -752,12 +779,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value > rhs_const.int_value
-                    : lhs_const.int_value > rhs_const.float_value;
+                                       ? lhs_const.int_value > rhs_const.int_value
+                                       : lhs_const.int_value > rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value > rhs_const.int_value
-                    : lhs_const.float_value > rhs_const.float_value;
+                                       ? lhs_const.float_value > rhs_const.int_value
+                                       : lhs_const.float_value > rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -778,12 +805,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value >= rhs_const.int_value
-                    : lhs_const.int_value >= rhs_const.float_value;
+                                       ? lhs_const.int_value >= rhs_const.int_value
+                                       : lhs_const.int_value >= rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value >= rhs_const.int_value
-                    : lhs_const.float_value >= rhs_const.float_value;
+                                       ? lhs_const.float_value >= rhs_const.int_value
+                                       : lhs_const.float_value >= rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -804,12 +831,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value != rhs_const.int_value
-                    : lhs_const.int_value != rhs_const.float_value;
+                                       ? lhs_const.int_value != rhs_const.int_value
+                                       : lhs_const.int_value != rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value != rhs_const.int_value
-                    : lhs_const.float_value != rhs_const.float_value;
+                                       ? lhs_const.float_value != rhs_const.int_value
+                                       : lhs_const.float_value != rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -830,12 +857,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value < rhs_const.int_value
-                    : lhs_const.int_value < rhs_const.float_value;
+                                       ? lhs_const.int_value < rhs_const.int_value
+                                       : lhs_const.int_value < rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value < rhs_const.int_value
-                    : lhs_const.float_value < rhs_const.float_value;
+                                       ? lhs_const.float_value < rhs_const.int_value
+                                       : lhs_const.float_value < rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -856,12 +883,12 @@ void IRBuilder::visit(SyntaxTree::BinaryCondExpr &node) {
             const_expr.is_int = true;
             if (lhs_const.is_int) {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.int_value <= rhs_const.int_value
-                    : lhs_const.int_value <= rhs_const.float_value;
+                                       ? lhs_const.int_value <= rhs_const.int_value
+                                       : lhs_const.int_value <= rhs_const.float_value;
             } else {
                 const_expr.int_value = rhs_const.is_int
-                    ? lhs_const.float_value <= rhs_const.int_value
-                    : lhs_const.float_value <= rhs_const.float_value;
+                                       ? lhs_const.float_value <= rhs_const.int_value
+                                       : lhs_const.float_value <= rhs_const.float_value;
             }
         } else {
             const_expr.is_valid = false;
@@ -893,8 +920,8 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
                 } else {
                     const_expr.is_int = false;
                     const_expr.float_value = rhs_const.is_int
-                        ? lhs_const.float_value + rhs_const.int_value
-                        : lhs_const.float_value + rhs_const.float_value;
+                                             ? lhs_const.float_value + rhs_const.int_value
+                                             : lhs_const.float_value + rhs_const.float_value;
                 }
             } else {
                 const_expr.is_valid = false;
@@ -927,8 +954,8 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
                 } else {
                     const_expr.is_int = false;
                     const_expr.float_value = rhs_const.is_int
-                        ? lhs_const.float_value - rhs_const.int_value
-                        : lhs_const.float_value - rhs_const.float_value;
+                                             ? lhs_const.float_value - rhs_const.int_value
+                                             : lhs_const.float_value - rhs_const.float_value;
                 }
             } else {
                 const_expr.is_valid = false;
@@ -961,8 +988,8 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
                 } else {
                     const_expr.is_int = false;
                     const_expr.float_value = rhs_const.is_int
-                        ? lhs_const.float_value * rhs_const.int_value
-                        : lhs_const.float_value * rhs_const.float_value;
+                                             ? lhs_const.float_value * rhs_const.int_value
+                                             : lhs_const.float_value * rhs_const.float_value;
                 }
             } else {
                 const_expr.is_valid = false;
@@ -995,8 +1022,8 @@ void IRBuilder::visit(SyntaxTree::BinaryExpr &node) {
                 } else {
                     const_expr.is_int = false;
                     const_expr.float_value = rhs_const.is_int
-                        ? lhs_const.float_value / rhs_const.int_value
-                        : lhs_const.float_value / rhs_const.float_value;
+                                             ? lhs_const.float_value / rhs_const.int_value
+                                             : lhs_const.float_value / rhs_const.float_value;
                 }
             } else {
                 const_expr.is_valid = false;
@@ -1037,13 +1064,13 @@ void IRBuilder::visit(SyntaxTree::UnaryExpr &node) {
             if (const_expr.is_valid) {
                 if (const_expr.is_int)
                     const_expr.int_value = -const_expr.int_value;
-                else 
-                    const_expr.float_value = -const_expr.float_value; 
+                else
+                    const_expr.float_value = -const_expr.float_value;
             }
         } else {
             if (tmp_val->get_type()->is_float_type())
                 tmp_val = this->builder->create_fsub(CONST_FLOAT(0.0), tmp_val);
-            else 
+            else
                 tmp_val = this->builder->create_isub(CONST_INT(0), tmp_val);
             const_expr.is_valid = false;
         }
@@ -1156,4 +1183,3 @@ void IRBuilder::visit(SyntaxTree::BreakStmt &node) {
 void IRBuilder::visit(SyntaxTree::ContinueStmt &node) {
     this->builder->create_br(tmp_condbb.back());
 }
-
