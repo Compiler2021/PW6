@@ -11,6 +11,7 @@ int initval_depth = 0;
 int initval_proceed_stage = 0; // means we are initializing which dimension
 //int is_exprsion = 0;
 std::vector<int> dimension_vec; // for MultiDimensionArray
+std::vector<int> dimension_vec_funcparam;
 std::vector<std::vector<float>> dimension_length_vec; // store inital value
 std::vector<float> multiDimInitVec; // for initval
 // to store state
@@ -176,10 +177,11 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
             }
             else{
                 //std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
-                auto *MultiarrayType_local = PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], dimension_vec, count-1));
+                auto *MultiarrayType_local = PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], dimension_vec_funcparam, count-1));
                 auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
                 builder->create_store(*Argument, multiArrayLocal);
                 scope.push(param->name, multiArrayLocal);
+                dimension_vec_funcparam.clear();
             }
         }
         Argument++;                                                             //下一个参数值
@@ -190,7 +192,7 @@ void IRBuilder::visit(SyntaxTree::FuncParam &node) {
     for(auto Exp:node.array_index){                                             //遍历每个Expr
         if (Exp != nullptr){
             Exp->accept(*this);
-            dimension_vec.push_back(const_expr.int_value);
+            dimension_vec_funcparam.push_back(const_expr.int_value);
         }
     }
 }
