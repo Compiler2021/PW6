@@ -772,17 +772,18 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
             }
         } else {
             if (ret->get_type()->get_pointer_element_type()->is_pointer_type()) {
-                for (auto i = idxs.begin() + 1; i < idxs.end(); i++) {
-                    ret = this->builder->create_gep(ret, {CONST_INT(0)});
-                    ret = this->builder->create_load(ret);
-                    ret = this->builder->create_gep(ret, {*i});
-                }
-            }
-            else {
+                ret = this->builder->create_gep(ret, {CONST_INT(0)});
+                ret = this->builder->create_load(ret);
+                idxs.erase(idxs.begin());
+                ret = this->builder->create_gep(ret, std::move(idxs)); 
+            } else {
                 if (ret->get_type()->get_pointer_element_type()->is_multi_array_type()) {
                     const auto tmp = static_cast<MultiDimensionArrayType *>(ret->get_type()->get_pointer_element_type());
-                    for (auto i = len; i < tmp->get_num_of_dimension(); i++)
+                    if (len != tmp->get_num_of_dimension()) {
                         idxs.push_back(CONST_INT(0));
+                        tmp_addr = this->builder->create_gep(ret, std::move(idxs));
+                        return;
+                    }
                 }
                 ret = this->builder->create_gep(ret, std::move(idxs)); // 获取数组元素
             }
@@ -807,7 +808,8 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
             tmp_addr = this->builder->create_gep(ret, {CONST_INT(0)});
             tmp_addr = this->builder->create_load(tmp_addr);
             tmp_val = this->builder->create_load(tmp_addr);
-        } else if(ret->get_type()->get_pointer_element_type()->is_array_type())  {
+        } else if(ret->get_type()->get_pointer_element_type()->is_array_type()
+                || ret->get_type()->get_pointer_element_type()->is_multi_array_type())  {
             tmp_addr = this->builder->create_gep(ret, {CONST_INT(0), CONST_INT(0)});
             tmp_val = this->builder->create_load(ret);
         } else {
@@ -1419,6 +1421,7 @@ void IRBuilder::visit(SyntaxTree::FuncCallStmt &node) {
         }
         if ((*arg_begin)->get_type()->is_pointer_type()) {
             tmp_val = tmp_addr;
+            tmp_val->set_type((*arg_begin)->get_type());
         }
         params.push_back(tmp_val);
         arg_begin++;
