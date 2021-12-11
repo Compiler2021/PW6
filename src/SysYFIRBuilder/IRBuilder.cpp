@@ -117,10 +117,11 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
                 count++;
             if(count == 1)
                 params.push_back(PointerType::get(TypeMap[param->param_type]));
-            else
-                params.push_back(MultiDimensionArrayType::get(TypeMap[param->param_type], dimension_vec, count));
+            else{
+                std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
+                params.push_back(PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], tmp, count-1)));
+            }
         }
-
     }
     auto FuncType = FunctionType::get(TypeMap[node.ret_type], params);
     auto Func = Function::create(FuncType, node.name, builder->get_module());
@@ -167,14 +168,9 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
                 builder->create_store(*Argument, paramAlloc);                            //存参数的值
                 scope.push(param->name, paramAlloc);                              //加入符号表
             }
-            else if(param->param_type == SyntaxTree::Type::FLOAT){
-                auto *MultiarrayType_local = MultiDimensionArrayType::get(TypeMap[SyntaxTree::Type::FLOAT], dimension_vec, count);
-                auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
-                builder->create_store(*Argument, multiArrayLocal);
-                scope.push(param->name, multiArrayLocal);
-            }
             else{
-                auto *MultiarrayType_local = MultiDimensionArrayType::get(TypeMap[SyntaxTree::Type::INT], dimension_vec, count);
+                std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
+                auto *MultiarrayType_local = PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], tmp, count-1));
                 auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
                 builder->create_store(*Argument, multiArrayLocal);
                 scope.push(param->name, multiArrayLocal);
