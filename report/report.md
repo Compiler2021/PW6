@@ -65,6 +65,16 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 直接调用`%6`就可以进行计算和操作，不过针对`demo`中类似的部分，如果有`a = call(c,d)`之类的操作，会将`%6`存入到“分配”给`a`的变量中，将返回值绑定到`a`参数
 
+##### 思考题2-1：
+
+​	
+
+##### 思考题3-1：
+
+​	"%2 = getelementptr [10 x i32], [10 x i32]* %1, i32 0, i32 %0"以int类型4字节寻址，即数组为%1[10]，获取%1[%0]的地址
+
+​	"%2 = getelementptr i32, i32* %1 i32 %0"以单字节寻址，获取指针%1偏移%0个字节的地址
+
 ## 实验设计
 
 ### Assembly 
@@ -79,7 +89,7 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ### InitVal
 
-	如果当前InitVal是Expr类型，则直接访问。如果当前InitVal是InitVal嵌套类型，则记录嵌套深度initval_depth++，遍历node.elementList。如果常值表达式const_expr是int类型，则将其值转换成float类型存入array_inital；如果是float类型，则直接存入array_inital。
+ 如果当前InitVal是Expr类型，则直接访问。如果当前InitVal是InitVal嵌套类型，则记录嵌套深度initval_depth++，遍历node.elementList。如果常值表达式const_expr是int类型，则将其值转换成float类型存入array_inital；如果是float类型，则直接存入array_inital。
 
 ### FuncDef
 
@@ -141,9 +151,7 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ### IfStmt
 
-	如果没有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到nextBB基本块。建立trueBB断点，访问if_statement，跳转到nextBB；建立nextBB断点。
-	
-	如果有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到falseBB基本块。建立trueBB断点，访问if_statement，如果if_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB；如果if_statement的最后语句是终止指令则去除nextBB。建立falseBB断点，访问else_statement，如果else_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB。建立nextBB断点。
+	如果没有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到nextBB基本块。建立trueBB断点，访问if_statement，跳转到nextBB；建立nextBB断点。如果有else_statement，则访问条件表达式cond_exp，根据其值设置条件跳转，真跳转到 trueBB基本块，假跳转到falseBB基本块。建立trueBB断点，访问if_statement，如果if_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB；如果if_statement的最后语句是终止指令则去除nextBB。建立falseBB断点，访问else_statement，如果else_statement的最后语句不是终止指令则说明终止指令在nextBB中，跳转到nextBB。建立nextBB断点。
 
 ### WhileStmt
 
@@ -181,6 +189,10 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ## 实验总结
 
+在本次实验中，本小组在助教给的代码框架基础上实现了 SysYF 语言的 IR 生成器。在编写代码的过程中，小组成员对于 代码生成的基本逻辑以及 LLVM IR 的基本指令有了更深的了解，同时也了解了在代码生成的过程中有哪些以前不知道的难点。在解决这些难点的过程中，小组成员对代码生成的过程更为明晰，同时对于访问者模式的使用与优点也有了更深的体会。
+
 ## 实验反馈
+
+助教给的框架设计合理，文档详细明晰，实验时间给的也比较宽裕，可以按时完成实验。小组实验的模式也让我们体验到了多人协同开发的流程以及一些注意事项。开发流程非常顺畅，没有什么修改意见。
 
 ## 组间交流
