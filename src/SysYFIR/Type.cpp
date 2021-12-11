@@ -83,7 +83,9 @@ Type *Type::get_array_element_type(){
         return static_cast<ArrayType *>(this)->get_element_type();
     /* Modified */
     else if( this->is_multi_array_type() )
+    {
         return static_cast<MultiDimensionArrayType *>(this)->get_element_type();
+    }
     else
         return nullptr;
 }

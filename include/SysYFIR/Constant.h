@@ -62,7 +62,28 @@ public:
     virtual std::string print() override;
 };
 
-/* Modify */
+/* Modified */
+class ConstantMultiArray : public Constant
+{
+private:
+    std::vector<std::vector<Constant*>> const_multi_array; // This is to store initial value
+    std::vector<int> dimension_vec;
+    int size;
+    ConstantMultiArray(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const std::vector<std::vector<Constant*>> &val, int size);
+public:
+    
+    ~ConstantMultiArray()=default;
+
+    Constant* get_element_value(std::vector<int> gep_vec); // hand me the corrdinate for each dimension
+
+    unsigned get_size_of_array() { 
+        return size;
+     } 
+
+    static ConstantMultiArray *get(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const std::vector<std::vector<Constant*>> &val, int size);
+
+    virtual std::string print() override;
+};
 
 class ConstantZero : public Constant 
 {
