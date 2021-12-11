@@ -380,7 +380,91 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
             else // multi dimension array
             {
-                array_inital.clear(); // needed procedure
+                auto *multiArrayType_global = MultiDimensionArrayType::get(Vartype, dimension_vec, count);
+                //scope.push(node.name, multiArrayLocal);
+                if(node.btype == SyntaxTree::Type::FLOAT)
+                {                   
+                    int i = 0;
+                    int ResultSize = 1;
+                    while(i < dimension_vec.size())
+                    {
+                        ResultSize = ResultSize * dimension_vec[i];
+                        i++;
+                    }
+                    std::vector<std::vector<Constant*>> multi_init_vec;
+                    int pos = dimension_length_vec.size();
+                    for(i = 0; i < pos; i++)
+                    {
+                        auto temp_vec = dimension_length_vec[i];
+                        std::vector<Constant*> init_vec;
+                        int inner_pos = dimension_vec.back();
+                        for(int j = 0; j < inner_pos; j++)
+                        {
+                            if(j >= temp_vec.size())
+                            {
+                                init_vec.push_back(CONST_FLOAT(0.0));
+                                j++;
+                                continue;
+                            }
+                            auto t = CONST_FLOAT(temp_vec[j]);
+                            init_vec.push_back(t);
+                        }
+                        multi_init_vec.push_back(init_vec);
+                    }
+                    auto MultiArrayInitializer = ConstantMultiArray::get(multiArrayType_global, dimension_vec, multi_init_vec, ResultSize);
+                    if(node.is_constant)
+                    {
+                        auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, true, MultiArrayInitializer);
+                        scope.push(node.name, multiArrayGlobal);
+                    }
+                    else
+                    {
+                        auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, false, MultiArrayInitializer);
+                        scope.push(node.name, multiArrayGlobal);
+                    }
+                }
+                else
+                {
+                    int i = 0;
+                    int ResultSize = 1;
+                    while(i < dimension_vec.size())
+                    {
+                        ResultSize = ResultSize * dimension_vec[i];
+                        i++;
+                    }
+                    std::vector<std::vector<Constant*>> multi_init_vec;
+                    int pos = dimension_length_vec.size();
+                    for(i = 0; i < pos; i++)
+                    {
+                        auto temp_vec = dimension_length_vec[i];
+                        std::vector<Constant*> init_vec;
+                        int inner_pos = dimension_vec.back();
+                        for(int j = 0; j < inner_pos; j++)
+                        {
+                            if(j >= temp_vec.size())
+                            {
+                                init_vec.push_back(CONST_INT(0));
+                                j++;
+                                continue;
+                            }
+                            auto t = CONST_INT((int)temp_vec[j]);
+                            init_vec.push_back(t);
+                        }
+                        multi_init_vec.push_back(init_vec);
+                    }
+                    auto MultiArrayInitializer = ConstantMultiArray::get(multiArrayType_global, dimension_vec, multi_init_vec, ResultSize);
+                    
+                    if(node.is_constant)
+                    {
+                        auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, true, MultiArrayInitializer);
+                        scope.push(node.name, multiArrayGlobal);
+                    }
+                    else
+                    {
+                        auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, false, MultiArrayInitializer);
+                        scope.push(node.name, multiArrayGlobal);
+                    }  
+                }
             }
         }
         else // initialed not global
@@ -461,7 +545,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                                 break; // avoid error
                         }
                         auto temp_count = count-1;
-                        std::vector<float> temp_init_vec = dimension_length_vec[flag-len]; // get initial value vec
+                        std::vector<float> temp_init_vec = dimension_length_vec[len-1]; // get initial value vec
                         std::vector<Value *> value_vec; // get ptr
                         int fulfill_need = count - temp_value_vec.size();
                         while(fulfill_need != 0)
@@ -482,7 +566,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                             auto Gep = builder->create_gep(multiArrayLocal, value_vec);// possible solution selfmade api
                             if(k < temp_init_vec.size())
                             {
-                                int key = (temp_init_vec.size()-1-k);
+                                int key = k;
                                 builder->create_store(CONST_FLOAT(temp_init_vec[key]), Gep);
                             }
                             else
@@ -501,7 +585,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                     int length_sum = 1;
                     for(int i = 0; i < count-1; i++)
                         length_sum *= dimension_vec[i]; // dimension calculation
-                    int flag = dimension_length_vec.size();
                     for(int len = 1; len <= length_sum; len++)
                     {   
                         int j = 1;
@@ -517,7 +600,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                                 break; // avoid error
                         }
                         auto temp_count = count-1;
-                        std::vector<float> temp_init_vec = dimension_length_vec[flag-len]; // get initial value vec
+                        std::vector<float> temp_init_vec = dimension_length_vec[len-1]; // get initial value vec
                         std::vector<Value *> value_vec; // get ptr
                         int fulfill_need = count - temp_value_vec.size();
                         while(fulfill_need != 0)
@@ -538,7 +621,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                             auto Gep = builder->create_gep(multiArrayLocal, value_vec);// possible solution selfmade api
                             if(k < temp_init_vec.size())
                             {
-                                int key = (temp_init_vec.size()-1-k);
+                                int key = k;
                                 builder->create_store(CONST_INT((int)temp_init_vec[key]), Gep);
                             }
                             else
@@ -552,12 +635,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         value_vec.clear();
                     }  
                 }
-                initval_depth = 0;
-                initval_proceed_stage = 0;
-                multiDimInitVec.clear();
-                array_inital.clear(); 
-                dimension_vec.clear();
-                dimension_length_vec.clear(); // needed procedure
             }
         }
     }
@@ -642,6 +719,12 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
             }
         }
     }
+    initval_depth = 0;
+    initval_proceed_stage = 0;
+    multiDimInitVec.clear();
+    array_inital.clear(); 
+    dimension_vec.clear();
+    dimension_length_vec.clear(); // needed procedure
 }
 
 void IRBuilder::visit(SyntaxTree::LVal &node) {
