@@ -113,12 +113,18 @@ void IRBuilder::visit(SyntaxTree::FuncDef &node) {
         if (param->array_index.empty())
             params.push_back(TypeMap[param->param_type]);
         else{
-            for(auto expr:param->array_index)
+            std::vector<int> tmp;
+            for(auto expr:param->array_index){
+                if (expr != nullptr){
+                    expr->accept(*this);
+                    tmp.push_back(const_expr.int_value);
+                }
                 count++;
+            }
             if(count == 1)
                 params.push_back(PointerType::get(TypeMap[param->param_type]));
             else{
-                std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
+                //std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
                 params.push_back(PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], tmp, count-1)));
             }
         }
@@ -169,8 +175,8 @@ void IRBuilder::visit(SyntaxTree::FuncFParamList &node) {
                 scope.push(param->name, paramAlloc);                              //加入符号表
             }
             else{
-                std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
-                auto *MultiarrayType_local = PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], tmp, count-1));
+                //std::vector<int> tmp(dimension_vec.begin(), dimension_vec.end()-1);
+                auto *MultiarrayType_local = PointerType::get(MultiDimensionArrayType::get(TypeMap[param->param_type], dimension_vec, count-1));
                 auto multiArrayLocal = builder->create_alloca(MultiarrayType_local);
                 builder->create_store(*Argument, multiArrayLocal);
                 scope.push(param->name, multiArrayLocal);
