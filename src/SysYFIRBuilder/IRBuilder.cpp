@@ -647,26 +647,58 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
 void IRBuilder::visit(SyntaxTree::LVal &node) {
     auto ret = this->scope.find(node.name, false); // 根据名字获取值
     if (!node.array_index.empty()) {               // 如果是个数组
-        node.array_index[0]->accept(*this);        // 计算下标表达式的值
+        std::vector<Value *> idxs{CONST_INT(0)};
+        std::vector<int> index_vec;
+        for (const auto &expr : node.array_index) { // 计算下标表达式的值
+            expr->accept(*this);
+            idxs.push_back(tmp_val);
+            index_vec.push_back(const_expr.int_value);
+        }
+        auto len = idxs.size() - 1;
         if (scope.in_global()) {
-            auto index = const_expr;
             const_expr.is_valid = true;
             const_expr.is_int = ret->get_type()->get_pointer_element_type()->get_array_element_type() == INT32_T;
             if (const_expr.is_int) {
                 auto get = const_int_var.find(node.name);
-                const_expr.int_value = get->second[index.int_value];
-            } else {
+                if (ret->get_type()->get_pointer_element_type()->is_array_type()) // 一维数组
+                    const_expr.int_value = get->second[index_vec[0]];
+                else { // 多维数组
+                    auto tmp = static_cast<MultiDimensionArrayType *>(ret->get_type()->get_pointer_element_type());
+                    auto dim_vec = tmp->get_dim_vec();
+                    auto index = index_vec[0];
+                    for (auto i = 1u; i < dim_vec.size(); i++)
+                        index = index * dim_vec[i] + index_vec[i];
+                    const_expr.int_value = get->second[index];
+                }
+            } else { // 多维数组
                 auto get = const_float_var.find(node.name);
-                const_expr.float_value = get->second[index.int_value];
+                if (ret->get_type()->get_pointer_element_type()->is_array_type()) // 一维数组
+                    const_expr.float_value = get->second[index_vec[0]];
+                else {
+                    auto tmp = static_cast<MultiDimensionArrayType *>(ret->get_type()->get_pointer_element_type());
+                    auto dim_vec = tmp->get_dim_vec();
+                    auto index = index_vec[0];
+                    for (auto i = 1u; i < dim_vec.size(); i++)
+                        index = index * dim_vec[i] + index_vec[i];
+                    const_expr.float_value = get->second[index];
+                }
             }
         } else {
             if (ret->get_type()->get_pointer_element_type()->is_pointer_type()) {
-                ret = this->builder->create_gep(ret, {CONST_INT(0)});
-                ret = this->builder->create_load(ret);
-                ret = this->builder->create_gep(ret, {tmp_val});
+                for (auto i = idxs.begin() + 1; i < idxs.end(); i++) {
+                    ret = this->builder->create_gep(ret, {CONST_INT(0)});
+                    ret = this->builder->create_load(ret);
+                    ret = this->builder->create_gep(ret, {*i});
+                }
             }
-            else
-                ret = this->builder->create_gep(ret, {CONST_INT(0), tmp_val}); // 获取数组元素
+            else {
+                if (ret->get_type()->get_pointer_element_type()->is_multi_array_type()) {
+                    const auto tmp = static_cast<MultiDimensionArrayType *>(ret->get_type()->get_pointer_element_type());
+                    for (auto i = len; i < tmp->get_num_of_dimension(); i++)
+                        idxs.push_back(CONST_INT(0));
+                }
+                ret = this->builder->create_gep(ret, std::move(idxs)); // 获取数组元素
+            }
             tmp_addr = ret;
             tmp_val = this->builder->create_load(tmp_addr);
             const_expr.is_valid = false;
