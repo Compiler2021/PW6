@@ -368,7 +368,6 @@ GetElementPtrInst::GetElementPtrInst(Value *ptr, std::vector<Value *> idxs, Basi
                 1 + idxs.size(), bb)
 {
     set_operand(0, ptr);
-    std::cout<<idxs.size();
     for (int i = 0; i < idxs.size(); i++) {
         set_operand(i + 1, idxs[i]);
     }

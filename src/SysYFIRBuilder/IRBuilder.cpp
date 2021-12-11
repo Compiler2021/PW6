@@ -90,7 +90,6 @@ void IRBuilder::visit(SyntaxTree::InitVal &node)
             {
                 dimension_length_vec.push_back(multiDimInitVec);
                 initval_proceed_stage++;
-                std::cout << "value i get is" << multiDimInitVec.size()<< std::endl;
                 multiDimInitVec.clear(); // for next stage
             }
             initval_depth--;        // wow, I got out, depth--, shall we proceed?
@@ -464,7 +463,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         auto temp_count = count-1;
                         std::vector<float> temp_init_vec = dimension_length_vec[flag-len]; // get initial value vec
                         std::vector<Value *> value_vec; // get ptr
-                        int fulfill_need = count - 1 - temp_value_vec.size();
+                        int fulfill_need = count - temp_value_vec.size();
                         while(fulfill_need != 0)
                         {
                             auto t = CONST_INT(0);
@@ -520,7 +519,7 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         auto temp_count = count-1;
                         std::vector<float> temp_init_vec = dimension_length_vec[flag-len]; // get initial value vec
                         std::vector<Value *> value_vec; // get ptr
-                        int fulfill_need = count - 1 - temp_value_vec.size();
+                        int fulfill_need = count - temp_value_vec.size();
                         while(fulfill_need != 0)
                         {
                             auto t = CONST_INT(0);
