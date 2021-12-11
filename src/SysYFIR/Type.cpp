@@ -81,6 +81,9 @@ Type *Type::get_pointer_element_type(){
 Type *Type::get_array_element_type(){
     if( this->is_array_type() )
         return static_cast<ArrayType *>(this)->get_element_type();
+    /* Modified */
+    else if( this->is_multi_array_type() )
+        return static_cast<MultiDimensionArrayType *>(this)->get_element_type();
     else
         return nullptr;
 }
@@ -102,12 +105,31 @@ int Type::get_size()
         auto num_elements = static_cast<ArrayType *>(this)->get_num_of_elements();
         return element_size * num_elements;
     }
+    /* Modified */
+    if(this->is_multi_array_type())
+    {
+        auto element_size = static_cast<MultiDimensionArrayType *>(this)->get_element_type()->get_size();
+        auto dim_vec = static_cast<MultiDimensionArrayType *>(this)->get_dim_vec();
+        int len = 1;
+        while (dim_vec.size())
+        {
+            auto temp = dim_vec.back();
+            len = len * temp;
+            dim_vec.pop_back();
+        }
+        return len * element_size;
+    }
     if (this->is_pointer_type()) 
     {
         if (this->get_pointer_element_type()->is_array_type()) 
         {
             return this->get_pointer_element_type()->get_size();
         } 
+        /* Modified */
+        else if(this->get_pointer_element_type()->is_multi_array_type())
+        {
+            return this->get_pointer_element_type()->get_size();
+        }
         else 
         {
             return 4;
@@ -281,7 +303,7 @@ MultiDimensionArrayType::MultiDimensionArrayType(Type *contained, std::vector<in
 
 bool MultiDimensionArrayType::is_valid_element_type(Type *ty)
 {
-    return ty->is_integer_type()||ty->is_array_type()||ty->is_float_type()||ty->is_multi_array_type();
+    return ty->is_integer_type()||ty->is_array_type()||ty->is_float_type()||ty->is_multi_array_type(); // bug?
 }
 
 MultiDimensionArrayType *MultiDimensionArrayType::get(Type *contained, std::vector<int> element_array, unsigned dimension)

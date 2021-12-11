@@ -55,7 +55,8 @@ public:
     ReturnInst *create_void_ret() { return ReturnInst::create_void_ret(this->BB_); }
 
     GetElementPtrInst *create_gep(Value *ptr, std::vector<Value *> idxs) { return GetElementPtrInst::create_gep(ptr, idxs, this->BB_); }
-
+    /* Modify here*/
+    //GetMultiElementPtrInst *create_gep_multi(Value *ptr, std::vector<Value *> idxs) { return GetMultiElementPtrInst::create_gep_multi(ptr, idxs, this->BB_); }
     StoreInst *create_store(Value *val, Value *ptr) { return StoreInst::create_store(val, ptr, this->BB_ ); }
     LoadInst * create_load(Type *ty, Value *ptr) { return LoadInst::create_load(ty, ptr, this->BB_); }
     LoadInst * create_load(Value *ptr) 

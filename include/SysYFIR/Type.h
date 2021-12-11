@@ -150,6 +150,7 @@ public:
 
     Type *get_element_type() const { return contained_; }
     unsigned get_num_of_dimension() const { return dimension; }
+    std::vector<int> get_dim_vec() const { return elements_array;}
     unsigned get_num_of_elements_by_dimension(int dimension) const { return elements_array[dimension]; } // seg fault be watched
 private:
     Type *contained_;

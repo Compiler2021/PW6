@@ -62,6 +62,8 @@ public:
     virtual std::string print() override;
 };
 
+/* Modify */
+
 class ConstantZero : public Constant 
 {
 private:

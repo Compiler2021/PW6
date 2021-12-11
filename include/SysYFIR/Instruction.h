@@ -287,6 +287,23 @@ private:
     Type *element_ty_;
 };
 
+/* Modified */
+/*class GetMultiElementPtrInst : public Instruction
+{
+private:
+    GetMultiElementPtrInst(Value *ptr, std::vector<Value *> idxs, BasicBlock *bb);
+
+public:
+    static Type *get_element_type(Value *ptr, std::vector<Value *> idxs);
+    static GetMultiElementPtrInst *create_gep_multi(Value *ptr, std::vector<Value *> idxs, BasicBlock *bb);
+    Type *get_element_type() const;
+
+    virtual std::string print() override;
+
+private:
+    Type *element_ty_; // MultiElementType
+};*/
+
 class StoreInst : public Instruction
 {
 private:

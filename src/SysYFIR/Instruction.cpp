@@ -368,6 +368,7 @@ GetElementPtrInst::GetElementPtrInst(Value *ptr, std::vector<Value *> idxs, Basi
                 1 + idxs.size(), bb)
 {
     set_operand(0, ptr);
+    std::cout<<idxs.size();
     for (int i = 0; i < idxs.size(); i++) {
         set_operand(i + 1, idxs[i]);
     }
@@ -390,6 +391,19 @@ Type *GetElementPtrInst::get_element_type(Value *ptr, std::vector<Value *> idxs)
             }
             if (ty->is_array_type()) {
                 arr_ty = static_cast<ArrayType *>(ty);
+            }
+        }
+    }
+    /* Modified here */
+    else if(ty->is_multi_array_type())
+    {
+        MultiDimensionArrayType *multi_arr_ty = static_cast<MultiDimensionArrayType *>(ty);
+        for(int i = 1; i < idxs.size(); i++)
+        {
+            ty = multi_arr_ty->get_element_type();
+            if(ty->is_multi_array_type())
+            {
+                multi_arr_ty = static_cast<MultiDimensionArrayType *>(ty);
             }
         }
     }
@@ -429,6 +443,80 @@ std::string GetElementPtrInst::print()
     }
     return instr_ir;
 }
+
+/* Modified */
+/*
+GetMultiElementPtrInst::GetMultiElementPtrInst(Value *ptr, std::vector<Value *> idxs, BasicBlock *bb)
+    : Instruction(PointerType::get(get_element_type(ptr, idxs)), Instruction::getelementptr, 
+                1 + idxs.size(), bb)
+{
+    set_operand(0, ptr);
+    for (int i = 0; i < idxs.size(); i++) {
+        set_operand(i + 1, idxs[i]);
+    }
+    element_ty_ = get_element_type(ptr, idxs);
+}
+
+Type *GetMultiElementPtrInst::get_element_type(Value *ptr, std::vector<Value *> idxs)
+{
+
+    Type *ty = ptr->get_type()->get_pointer_element_type();
+    if (ty->is_array_type())
+    {
+        ArrayType *arr_ty = static_cast<ArrayType *>(ty);
+        for (int i = 1; i < idxs.size(); i++) {
+            ty = arr_ty->get_element_type();
+            if (i < idxs.size() - 1) {
+#ifdef DEBUG
+                assert(ty->is_array_type() && "Index error!");
+#endif
+            }
+            if (ty->is_array_type()) {
+                arr_ty = static_cast<ArrayType *>(ty);
+            }
+        }
+    }
+    else if(ty->is_multi_array_type())
+    {
+        MultiDimensionArrayType *multi_arr_ty = static_cast<MultiDimensionArrayType *>(ty);
+        ty = multi_arr_ty->get_array_element_type();
+    }
+    return ty;
+}
+
+Type *GetMultiElementPtrInst::get_element_type() const
+{
+    return element_ty_; // ok
+}
+
+GetMultiElementPtrInst *GetMultiElementPtrInst::create_gep_multi(Value *ptr, std::vector<Value *> idxs, BasicBlock *bb)
+{
+    return new GetMultiElementPtrInst(ptr, idxs, bb);
+}
+
+std::string GetElementPtrInst::print()
+{
+    std::string instr_ir;
+    instr_ir += "%";
+    instr_ir += this->get_name();
+    instr_ir += " = ";
+    instr_ir += this->get_module()->get_instr_op_name( this->get_instr_type() );
+    instr_ir += " ";
+#ifdef DEBUG
+    assert(this->get_operand(0)->get_type()->is_pointer_type());
+#endif
+    instr_ir += this->get_operand(0)->get_type()->get_pointer_element_type()->print();
+    instr_ir += ", ";
+    for (int i = 0; i < this->get_num_operand(); i++)
+    {
+        if( i > 0 )
+            instr_ir += ", ";
+        instr_ir += this->get_operand(i)->get_type()->print();
+        instr_ir += " ";
+        instr_ir += print_as_op(this->get_operand(i), false);
+    }
+    return instr_ir;
+}*/
 
 StoreInst::StoreInst(Value *val, Value *ptr, BasicBlock *bb)
     : Instruction(Type::get_void_type(bb->get_module()), Instruction::store, 2, bb)
