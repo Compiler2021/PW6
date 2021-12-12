@@ -14,7 +14,14 @@ PB19020583 李晗驰
 
 PB19000002 孙策 
 
+* task 1 `if_hand.ll` `while_hand.ll`
 
+* task2 `if_gen.cpp` `while_gen.cpp`
+
+* task3 `ExprStmt` 、`ReturnStmt`、`AssignStmt`、`UnaryCondExpr`、
+
+    ​          `BinaryCondExpr`、`UnaryExpr`、`LVal`、`BinaryExpr`、`Literal`
+    ​          `FuncCallStmt`
 
 PB19030888 张舒恒
 
@@ -25,5 +32,5 @@ PB19030888 张舒恒
 | 组员姓名 | 贡献百分比 |
 | :-----: | :-------: |
 |   李晗驰   |    xx%    |
-|   孙策   |    xx%    |
+|   孙策   |    33.3%    |
 |   张舒恒   |    xx%    |
