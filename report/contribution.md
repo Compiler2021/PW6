@@ -18,19 +18,21 @@ PB19000002 孙策
 
 * task2 `if_gen.cpp` `while_gen.cpp`
 
-* task3 `ExprStmt` 、`ReturnStmt`、`AssignStmt`、`UnaryCondExpr`、
-
-    ​          `BinaryCondExpr`、`UnaryExpr`、`LVal`、`BinaryExpr`、`Literal`
-    ​          `FuncCallStmt`
+* task3 `ExprStmt` 、`ReturnStmt`、`AssignStmt`、`UnaryCondExpr``BinaryCondExpr`、`UnaryExpr`、`LVal`、`BinaryExpr`、`Literal` 、`FuncCallStmt`
 
 PB19030888 张舒恒
 
+* task 1 `assign_hand.ll` 
 
+* task2 `assign_gen.cpp` 
+
+* task3 `Assembly` 、`FuncDef`、`FuncFParamList`、`FuncParam`、`IfStmt`、`WhileStmt`、`BreakStmt`、`ContinueStmt`
 
 ## 评定结果
 
 | 组员姓名 | 贡献百分比 |
-| :-----: | :-------: |
-|   李晗驰   |    xx%    |
-|   孙策   |    33.3%    |
-|   张舒恒   |    xx%    |
+| :------: | :--------: |
+|  李晗驰  |    xx%     |
+|   孙策   |   33.3%    |
+|  张舒恒  |    xx%     |
+
