@@ -365,8 +365,8 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                             init_vec.push_back(array_inital[i]);
                         else
                             init_vec.push_back(0.0);
-                        const_float_var[node.name] = init_vec;
                     }
+                    const_float_var[node.name] = init_vec;
                 }
                 else
                 {
@@ -377,8 +377,8 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                             init_vec.push_back((int)array_inital[i]);
                         else
                             init_vec.push_back(0);
-                        const_int_var[node.name] = init_vec;
                     }
+                    const_int_var[node.name] = init_vec;
                 }
                 array_inital.clear(); // for next def
             }
@@ -467,6 +467,43 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, false, MultiArrayInitializer);
                         scope.push(node.name, multiArrayGlobal);
                     }  
+                }
+                // it's for the const vector use
+                if(node.btype == SyntaxTree::Type::FLOAT)
+                {
+                    std::vector<float> init_vec;
+                    int dimSize = dimension_vec.size();
+                    for(int i = 0; i < dimSize; i++)
+                    {
+                        auto temp_vec = dimension_length_vec[i];
+                        int length = dimension_vec[i];
+                        for(int j = 0; j < length; j++)
+                        {
+                            if(j < temp_vec.size())
+                                init_vec.push_back(temp_vec[j]);
+                            else
+                                init_vec.push_back(0.0);
+                        }
+                    }
+                    const_float_var[node.name] = init_vec;
+                }
+                else
+                {
+                    std::vector<int> init_vec;
+                    int dimSize = dimension_vec.size();
+                    for(int i = 0; i < dimSize; i++)
+                    {
+                        auto temp_vec = dimension_length_vec[i];
+                        int length = dimension_vec[i];
+                        for(int j = 0; j < length; j++)
+                        {
+                            if(j < temp_vec.size())
+                                init_vec.push_back((int)temp_vec[j]);
+                            else
+                                init_vec.push_back(0);
+                        }
+                    }
+                    const_int_var[node.name] = init_vec;
                 }
             }
         }
