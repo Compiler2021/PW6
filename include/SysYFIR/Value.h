@@ -23,6 +23,8 @@ public:
 
     Type *get_type() const { return type_; }
 
+    void set_type(Type * new_type) { type_ = new_type; }
+
     std::list<Use> &get_use_list() { return use_list_; }
 
     void add_use(Value *val, unsigned arg_no = 0);
