@@ -27,6 +27,7 @@ struct ConstExpr {
 Value *tmp_val = nullptr;
 Value *tmp_addr = nullptr; // 地址
 int label = 0;
+bool is_func_arg = false;
 std::vector<BasicBlock*> tmp_condbb;
 std::vector<BasicBlock*> tmp_falsebb;
 std::vector<float> array_inital;            // for each dimension store the num
@@ -810,6 +811,15 @@ void IRBuilder::visit(SyntaxTree::LVal &node) {
             if (ret->get_type()->get_pointer_element_type()->is_pointer_type()) {
                 ret = this->builder->create_gep(ret, {CONST_INT(0)});
                 ret = this->builder->create_load(ret);
+                if (ret->get_type()->get_pointer_element_type()->is_multi_array_type()) {
+                    const auto tmp = static_cast<MultiDimensionArrayType *>(ret->get_type()->get_pointer_element_type());
+                    if (len - 1 != tmp->get_num_of_dimension()) {
+                        idxs.push_back(CONST_INT(0));
+                    }
+                    idxs.erase(idxs.begin());
+                    tmp_addr = this->builder->create_gep(ret, std::move(idxs));
+                    return;
+                }
                 idxs.erase(idxs.begin());
                 ret = this->builder->create_gep(ret, std::move(idxs)); 
             } else {
