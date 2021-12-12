@@ -457,7 +457,6 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         multi_init_vec.push_back(init_vec);
                     }
                     auto MultiArrayInitializer = ConstantMultiArray::get(multiArrayType_global, dimension_vec, multi_init_vec, ResultSize);
-                    
                     if(node.is_constant)
                     {
                         auto multiArrayGlobal = GlobalVariable::create(node.name, module.get(), multiArrayType_global, true, MultiArrayInitializer);
@@ -541,11 +540,11 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         int temp_len = len-1;
                         while(temp_len != 0)
                         {
-                            int temp = temp_len % dimension_vec[count-j];
+                            int temp = temp_len % dimension_vec[count-j-1];
                             temp_value_vec.push_back(temp);
-                            temp_len = temp_len/dimension_vec[count-j];
+                            temp_len = temp_len/dimension_vec[count-j-1];
                             j++;
-                            if(count-j < 0)
+                            if(count-j-1 < 0)
                                 break; // avoid error
                         }
                         auto temp_count = count-1;
@@ -596,11 +595,11 @@ void IRBuilder::visit(SyntaxTree::VarDef &node)
                         int temp_len = len-1;
                         while(temp_len != 0)
                         {
-                            int temp = temp_len % dimension_vec[count-j];
-                            temp_value_vec.push_back(temp);
-                            temp_len = temp_len/dimension_vec[count-j];
+                            int temp = temp_len % dimension_vec[count-1-j];
+                            temp_value_vec.push_back(temp);  // reverse it to get right value
+                            temp_len = temp_len/dimension_vec[count-j-1];
                             j++;
-                            if(count-j < 0)
+                            if(count-j-1 < 0)
                                 break; // avoid error
                         }
                         auto temp_count = count-1;

@@ -102,7 +102,7 @@ Constant *ConstantMultiArray::get_element_value(std::vector<int> gep_vec) {
     auto temp_vec = this->const_multi_array;
     auto dimension_vec = this->dimension_vec; // for calculation
     int i = gep_vec.size() - 2;
-    int pos = 1;
+    int pos = 0;
     while(i >= 0) // not examined
     {
         int times = 1;
@@ -115,8 +115,7 @@ Constant *ConstantMultiArray::get_element_value(std::vector<int> gep_vec) {
         pos += gep_vec[i] * times;
         i--;
     }
-    int wholeSize = this->size/(dimension_vec.back());
-    auto real_vec = temp_vec[wholeSize - pos];
+    auto real_vec = temp_vec[pos];
     return real_vec[gep_vec.back()];
 }
 
@@ -131,30 +130,37 @@ std::string ConstantMultiArray::print()
     int level = this->dimension_vec.size();  // it is just like initial value // level = 1 is the base
     int level_static = this->dimension_vec.size();
     int PrintPos = 0; // tell you where we are
-    int PrintCoord = (this->size/(this->dimension_vec.back()));
+    int PrintCoord = (this->size/(this->dimension_vec.back())); 
+    int level_flag = 0;
+    int array[level+1];
     while(PrintPos < PrintCoord)
     {
-        if(level != 1) // in the middle
+        if(level > 1) // in the middle
         {
-            const_ir += "[";
-            int temp_level = level;
-            while(temp_level > 1)
+            if(array[level] != 1)
             {
                 const_ir += "[";
-                const_ir += std::to_string(this->dimension_vec[level_static - temp_level + 1]);
+                array[level] = 1; // means we have printed the upperest "["
+            }    
+            level--; // deeper
+            int temp_level = level;
+            while(temp_level >= 1)
+            {
+                const_ir += "[";
+                const_ir += std::to_string(this->dimension_vec[level_static - temp_level]);
                 const_ir += " x ";
                 temp_level--;
-            }
+            } // print pointer type
             const_ir += this->get_type()->get_array_element_type()->print();
             temp_level = level;
-            while(temp_level > 1)
+            while(temp_level >= 1)
             {
                 const_ir += "]";
                 temp_level--;
-                if(temp_level == 1)
+                if(temp_level == 0)
                     const_ir += " ";
             }
-            level--;
+            level_flag = 0;
         }
         else // level == 1
         {
@@ -165,18 +171,18 @@ std::string ConstantMultiArray::print()
             {
                 const_ir += this->get_type()->get_array_element_type()->print();
                 const_ir += " ";
-                int gep_pos = PrintCoord - PrintPos;
+                int gep_pos = PrintPos;
                 std::vector<int> Gep;
                 int j = 1;
                 std::vector <int> temp_value_vec;
-                int temp_len = gep_pos - 1;
+                int temp_len = gep_pos;
                 while(temp_len != 0)
                 {
-                    int temp = temp_len % this->dimension_vec[level_static - j];
+                    int temp = temp_len % this->dimension_vec[level_static - j - 1];
                     temp_value_vec.push_back(temp);
-                    temp_len = temp_len/dimension_vec[level_static - j];
+                    temp_len = temp_len/this->dimension_vec[level_static - j - 1];
                     j++;
-                    if(level_static - j < 0)
+                    if(level_static - j - 1 < 0)
                     break; // avoid error
                 }
                 int fulfill_need = level_static - temp_value_vec.size() - 1;
@@ -198,9 +204,44 @@ std::string ConstantMultiArray::print()
                     break;
                 const_ir += ", ";
             }
-            level++;
+            /** It's not that simple by adding, we need to check if it needs to raise **/
+            int flag = 1;
+            int j = this->dimension_vec.size()-2;
+            int CalPos = PrintPos + 1;
+            //int upper_flag = 1;
+            if(CalPos%(this->dimension_vec[j])) // means we still in deepset part
+                level_flag = 1;
+            else
+                level_flag = 0;
+            while(flag)
+            {
+                if(j < 0)
+                    break;
+                if(CalPos%(this->dimension_vec[j]))
+                {
+                    flag = 0;
+                    const_ir += "], ";
+                    level++;
+                }
+                else
+                {
+                    flag = 1;
+                    const_ir += "]";
+                    array[level] = 0;
+                    level++;
+                    CalPos = CalPos/(this->dimension_vec[j]);
+                    if(CalPos == 1)
+                        array[level] = 0;
+                    j--;
+                }
+            }
+            PrintPos++;
         }
-        PrintPos++;
+    }
+    while(level <= level_static)
+    {
+        level++;
+        const_ir += "]";
     }
     return const_ir;
 }
