@@ -115,14 +115,20 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
       static bool is_valid_element_type(Type *ty);
   
       static MultiDimensionArrayType *get(Type *contained, std::vector<int> elements_array, unsigned dimension);
+  // 调用alloca指令构造一个多维数组类型类实体，参数为多维数组类型，存储维数-每一维长度的vector，维度数
   
-      Type *get_element_type() const { return contained_; }
-      
-      unsigned get_num_of_dimension() const { return dimension; }
-      
-      std::vector<int> get_dim_vec() const { return elements_array;}
-      
-      unsigned get_num_of_elements_by_dimension(int dimension) const { return elements_array[dimension]; } 
+  Type *get_element_type() const { return contained_; }
+  //返回数组元素类型
+  
+  unsigned get_num_of_dimension() const { return dimension; }
+  //返回数组维度数
+  
+  unsigned get_num_of_elements_by_dimension(int dimension) const { return elements_array[dimension];
+  //按照维度参数返回相应维度的长度
+                                                                  
+  std::vector<int> get_dim_vec() const { return elements_array;}
+  //返回一个vector，如同数组一样存储着每一维的长度, 比如vec[0]存储最高维长度
+  
   private:
       Type *contained_;
       std::vector<int> elements_array; 
@@ -157,12 +163,14 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
       ~ConstantMultiArray()=default;
   
       Constant* get_element_value(std::vector<int> gep_vec); // hand me the corrdinate for each dimension
+  // 类似于访问GetelementPtr一样访问数组元素值，不带前面固定的0，即gep_vec的大小等于数组维度数
   
-      unsigned get_size_of_array() { 
-          return size;
-       } 
+  unsigned get_size_of_array() { return size;} 
+  // 返回数组总元素个数
   
-      static ConstantMultiArray *get(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const std::vector<std::vector<Constant*>> &val, int size);
+  static ConstantMultiArray *get(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const 
+                                std::vector<std::vector<Constant*>> &val, int size);
+  // 获取全局多维数组类的指令，会触发print()以此完成赋值
   
       virtual std::string print() override;
   };
@@ -189,7 +197,7 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
   `[[[ , , ],[ , , ]],[[ , , ],[ , , ]]]`
 
   我们来看clang的一个例子，将其拆分：
-
+  
   ```llvm
   @a = dso_local global [2 x [2 x [3 x i32]]] //全局变量类型（alloc）
   [
@@ -204,7 +212,7 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
   ]
   , align 16
   ```
-
+  
   这正是我们所说的括号组织形式。
 
 ### InitVal
