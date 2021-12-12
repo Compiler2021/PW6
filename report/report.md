@@ -71,7 +71,9 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ##### 思考题2-1：
 
-​	
+两条指令参与计算的索引个数不同。
+
+因为指针的类型不同，第一个 `getelementptr` 的指针类型是 `int (*)[10]` ，第一个索引 `i32 0` 得到 第一个 `int [10]` 的地址，第二个索引 `i32 0` 得到第一个 `int [10]` 中第一个 `int` 的地址；第二个 `getelementptr` 的指针类型是 `int *`，第一个索引得到第一个 `int` 的地址
 
 ##### 思考题3-1：
 
@@ -87,13 +89,141 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ### VarDef
 
-​	获取变量类型Vartype，遍历数组变量各维长度表达式指针列表array_length，count记录维数，DimensionLength记录第一维长度，dimension_vec记录所有维长度。
+​	变量定义有几个关键分支点：
 
-​	
+- 变量是否为全局变量，这决定了我们调用`GlobalVariable`还是调用`get_alloc`
+
+- 变量元素的类型，`int`与`float`
+- 变量的类型，是普通变量或是数组，数组是一维或是多维
+- 是否赋初值，赋初值则要进行相应的处理
+
+针对非数组变量，其处理相对简单，局部变量只需要调用`get_alloc`和`create_store`，或者全局变量调用`GlobalVariable`的API来建立对应的全局变量。
+
+针对数组变量，不赋初值时的处理均较为简洁，下面讨论赋初值的情况。
+
+- 对于一维数组，其全局变量赋初值较为简单，因为API设计的较为方便。而局部变量需要使用一个一个`create_store`的方法赋值，才比较稳健。通过来自`InitVal`的`Vector`存储的信息，可以很好的进行赋值
+
+- 对于多维数组，这是件麻烦事，先来讨论局部变量：
+
+  - 局部变量要先分配空间，然而目前没有合适的`Type`来表示多维数组，于是参照一维数组的类型组织方式，修改源文件以增加多维数组类型：
+
+  ```c++
+  class MultiDimensionArrayType : public Type {
+  public:
+      MultiDimensionArrayType(Type *contained, std::vector<int> elements_array, unsigned dimension);
+  
+      static bool is_valid_element_type(Type *ty);
+  
+      static MultiDimensionArrayType *get(Type *contained, std::vector<int> elements_array, unsigned dimension);
+  
+      Type *get_element_type() const { return contained_; }
+      
+      unsigned get_num_of_dimension() const { return dimension; }
+      
+      std::vector<int> get_dim_vec() const { return elements_array;}
+      
+      unsigned get_num_of_elements_by_dimension(int dimension) const { return elements_array[dimension]; } 
+  private:
+      Type *contained_;
+      std::vector<int> elements_array; 
+      unsigned dimension;
+  };
+  ```
+
+  这里的要点是整个类必须存储足够的信息，并可以提供相应的`API`来获取这些信息
+
+  具体的实现不在此处赘述。
+
+  要使的`get_alloc`函数支持多维数组，其主要在于修改`print()`函数，增加多维数组类型的case，来正确输出。
+
+  - 其次是多维数组的赋值，我们在`InitVal`结点用一个`vector<vector<float>>`来存储相应的赋值数据。并另外有一个`vector<int>`存储每一维的长度
+
+    这样整个赋值过程就变成了进制计算，其中每位的进制与维度长度有关，将正确的指针传给`getptr`，再`create_store`最终实现每一个元素的正确赋值。
+
+- 再来讨论多维数组全局变量
+
+  全局变量用了一套不同的API，为了调用API，我们要在`Constant.h`中添加支持多维数组的类：
+
+  ```c++
+  class ConstantMultiArray : public Constant
+  {
+  private:
+      std::vector<std::vector<Constant*>> const_multi_array; // This is to store initial value
+      std::vector<int> dimension_vec;
+      int size;
+      ConstantMultiArray(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const std::vector<std::vector<Constant*>> &val, int size);
+  public:
+      
+      ~ConstantMultiArray()=default;
+  
+      Constant* get_element_value(std::vector<int> gep_vec); // hand me the corrdinate for each dimension
+  
+      unsigned get_size_of_array() { 
+          return size;
+       } 
+  
+      static ConstantMultiArray *get(MultiDimensionArrayType *ty, std::vector<int> dimension_vec, const std::vector<std::vector<Constant*>> &val, int size);
+  
+      virtual std::string print() override;
+  };
+  ```
+
+  并实现各个函数。
+
+  其中最为重要的是`print()`函数，它是有初值的多维数组全局变量声明的最大难点。
+
+  在这里，我们要引入层级作用域的观点，这中方式在`InitVal`也有用到。
+
+  这种观点能帮助我们了解什么时候打印几层方括号，以及该层的指针类型应该是什么
+
+  形象的组织全局变量赋初值的形式。
+
+  就是一颗树，其根节点对应最上层，树的每层结点都有`x`个孩子，这个`x`与该层对应的维度长有关
+
+  例如`int a[2][2][3] = ...`
+
+  这里根节点有两个孩子，这两个孩子分别又有两个孩子，第三层的结点又分别有三个孩子
+
+  括号最终被组织成这种形式：
+
+  `[[[ , , ],[ , , ]],[[ , , ],[ , , ]]]`
+
+  我们来看clang的一个例子，将其拆分：
+
+  ```llvm
+  @a = dso_local global [2 x [2 x [3 x i32]]] //全局变量类型（alloc）
+  [
+  ·[2 x [3 x i32]] [
+  ··[3 x i32] [i32 1, i32 2, i32 9], 
+  ··[3 x i32] [i32 3, i32 4, i32 10]
+  ], 
+  ·[2 x [3 x i32]] [
+  ·[3 x i32] [i32 5, i32 6, i32 11], 
+  ·[3 x i32] [i32 7, i32 8, i32 12]
+  ]
+  ]
+  , align 16
+  ```
+
+  这正是我们所说的括号组织形式。
 
 ### InitVal
 
- 如果当前InitVal是Expr类型，则直接访问。如果当前InitVal是InitVal嵌套类型，则记录嵌套深度initval_depth++，遍历node.elementList。如果常值表达式const_expr是int类型，则将其值转换成float类型存入array_inital；如果是float类型，则直接存入array_inital。
+针对普通和一维数组变量赋值：
+
+ 如果当前`InitVal`是`Expr`类型，则直接访问。如果当前`InitVal`是`InitVal`嵌套类型，则记录嵌套深度initval_depth++，遍历`node.elementList`。如果常值表达式`const_expr`是`int`类型，则将其值转换成`float`类型存入`array_inital`；如果是`float`类型，则直接存入`array_inital`。
+
+针对多维数组：
+
+嵌套深度的设计，主要是为了应对多维数组赋初值，举一个简单的例子：
+
+`int a[2][2] = {{0，1}，{2，3}}；`
+
+这个赋值的嵌套形式，我们的处理方式就是去记录程序当前的嵌套位置。
+
+当发现位于最底层的时候，比如`0，1`
+
+0和1都被规约为`Exp`，并合起来规约成`Exp`的`PtrList`，在程序计算`Exp`值的过程中，使用一个临时`vector<float>`存储计算结果，防止丢失信息，每进入一次最底层，将`vector`存入一个`vector<vector<float>>`中，最终在`VarDef`结点使用该信息。
 
 ### FuncDef
 
@@ -191,13 +321,35 @@ br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
 
 ​	我们给每个没有终止指令的函数增加一条返回语句，则if语句如果以终止指令结尾则不需要建立next基本块，否则next基本块一定含终止指令。
 
+### 如何实现一维数组的赋值
+
+ 采用一个全局`vector`存储赋值，离开`Initval`结点意味着已经获取所有赋值信息，在`VarDef`中直接调用`vector`来获取初值。
+
+### 如何实现多维数组及其赋值
+
+大致已在`VarDef`结点中进行了讲解，主要是自己做了新的`API`来保证相关部分的正确运行与输出。
+
+这里多次用到了进制计算、作用域等等知识点，信息量庞杂且巨大。
+
+保存初值的方式是建立一个`vector<vector<float>>`，每一个内部`vector`都对应一次对最低维度结点的赋值。
+
+在全局变量方面，括号的组成类似于数组赋初值的代码组成，这里采用作用域分级的思想，假设程序向前走，每输出一个' [ '就是进入更深一层，每输出一个' ] '就是上升到更浅一层，在最底层获取赋值信息，输出`value`
+
+对齐问题在`Initval`中无法实现，但是在`VarDef`中可以实现，针对每一个内部`vector`，如果长度小于最低维长度，则用0信息补齐即可。
+
 ## 实验总结
 
 在本次实验中，本小组在助教给的代码框架基础上实现了 SysYF 语言的 IR 生成器。在编写代码的过程中，小组成员对于 代码生成的基本逻辑以及 LLVM IR 的基本指令有了更深的了解，同时也了解了在代码生成的过程中有哪些以前不知道的难点。在解决这些难点的过程中，小组成员对代码生成的过程更为明晰，同时对于访问者模式的使用与优点也有了更深的体会。
 
+实验对多维数组的实现，使我们更加深入的了解了整个生成器的代码架构，以及其运行机制。包括，如何得到操作对象在整个`module`中对应的命名（%opx），怎样通过类保存的信息，打印出各种llvm对应的指令等等。整个代码工程的组建方式，让人体会到了C++的方便与美妙之处。
+
 ## 实验反馈
 
-助教给的框架设计合理，文档详细明晰，实验时间给的也比较宽裕，可以按时完成实验。小组实验的模式也让我们体验到了多人协同开发的流程以及一些注意事项。开发流程非常顺畅，没有什么修改意见。
+助教给的框架设计合理，文档详细明晰，实验时间给的也比较宽裕，可以按时完成实验。小组实验的模式也让我们体验到了多人协同开发的流程以及一些注意事项。
+
+文档的API提示方面有待修改，其问题主要体现在描述不够详细，部分令人无法很好的理解调用方式。除此之外，在全局变量API部分竟然提出语言定义全局变量初值一定为0。这与所给的测试样例，以及`task2`所给的demo中的builder文件对全局变量API的调用自相矛盾。
+
+在许多API的使用中，使用者不得不查看源码来知晓一些调用方式，以及其影响。
 
 ## 组间交流
 
